@@ -50,6 +50,24 @@
 			status = "disabled";
 		};
 
+		pm7250b_charger: charger@1000 {
+			compatible = "qcom,pm7250b-charger";
+			reg = <0x1000>;
+			interrupts = <PM7250B_SID 0x13 0x4 IRQ_TYPE_EDGE_BOTH>,
+				     <PM7250B_SID 0x12 0x2 IRQ_TYPE_EDGE_BOTH>,
+				     <PM7250B_SID 0x16 0x1 IRQ_TYPE_EDGE_RISING>,
+				     <PM7250B_SID 0x13 0x7 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "usb-plugin",
+					  "bat-ov",
+					  "wdog-bark",
+					  "usbin-icl-change";
+			io-channels = <&pm7250b_adc ADC5_USB_IN_I>,
+				      <&pm7250b_adc ADC5_USB_IN_V_16>;
+			io-channel-names = "usbin_i",
+					   "usbin_v";
+			status = "disabled";
+		};
+
 		pm7250b_typec: typec@1500 {
 			compatible = "qcom,pm7250b-typec", "qcom,pm8150b-typec";
 			reg = <0x1500>,
@@ -156,12 +174,36 @@
 				label = "chg_mid";
 			};
 
+			channel@2a {
+				reg = <ADC5_BAT_THERM_30K_PU>;
+				qcom,hw-settle-time = <200>;
+				qcom,pre-scaling = <1 1>;
+				qcom,ratiometric;
+				label = "bat_therm_30k";
+			};
+
+			channel@4a {
+				reg = <ADC5_BAT_THERM_100K_PU>;
+				qcom,hw-settle-time = <200>;
+				qcom,pre-scaling = <1 1>;
+				qcom,ratiometric;
+				label = "bat_therm_100k";
+			};
+
 			channel@4b {
 				reg = <ADC5_BAT_ID_100K_PU>;
 				qcom,hw-settle-time = <200>;
 				qcom,pre-scaling = <1 1>;
 				qcom,ratiometric;
 				label = "bat_id";
+			};
+
+			channel@6a {
+				reg = <ADC5_BAT_THERM_400K_PU>;
+				qcom,hw-settle-time = <200>;
+				qcom,pre-scaling = <1 1>;
+				qcom,ratiometric;
+				label = "bat_therm_400k";
 			};
 
 			channel@83 {
@@ -191,6 +233,28 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
+		};
+
+		pm7250b_qgauge: battery@4800 {
+			compatible = "qcom,pm7250b-qg", "qcom,pm6150-qg";
+			reg = <0x4800>;
+
+			io-channels = <0>, /* to be provided by board */
+				      <&pm7250b_adc ADC5_BAT_ID_100K_PU>;
+			io-channel-names = "batt-therm",
+					   "batt-id";
+
+			nvmem = <&pm7250b_qg_sdam>;
+
+			status = "disabled";
+		};
+
+		pm7250b_qg_sdam: nvram@b100 {
+			compatible = "qcom,spmi-sdam";
+			reg = <0xb100>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0 0xb100 0x100>;
 		};
 
 		pm7250b_gpios: gpio@c000 {
