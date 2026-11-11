@@ -331,6 +331,12 @@ config TOUCHSCREEN_HAMPSHIRE
 	  To compile this driver as a module, choose M here: the
 	  module will be called hampshire.
 
+config TOUCHSCREEN_ISTARIC_IS5662
+	tristate "Istaric IS5662 touchscreen"
+	depends on I2C
+	help
+	  Istaric IS5662 capacitive touch controller.
+
 config TOUCHSCREEN_EETI
 	tristate "EETI touchscreen panel support"
 	depends on I2C

@@ -805,6 +805,8 @@ patternProperties:
     description: Intersil
   "^issi,.*":
     description: Integrated Silicon Solutions Inc.
+  "^istaric,.*":
+    description: Istaric Technology Co., Ltd.
   "^ite,.*":
     description: ITE Tech. Inc.
   "^itead,.*":
