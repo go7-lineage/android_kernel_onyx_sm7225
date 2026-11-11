@@ -3,6 +3,9 @@
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  */
 
+#include <linux/of_platform.h>
+#include <drm/onyx/msm_dsi_client.h>
+
 #include "dsi.h"
 
 bool msm_dsi_is_cmd_mode(struct msm_dsi *msm_dsi)
@@ -190,6 +193,29 @@ static void dsi_dev_remove(struct platform_device *pdev)
 	DBG("");
 	dsi_destroy(msm_dsi);
 }
+
+/**
+ * msm_dsi_drm_device - the DRM device a DSI controller belongs to
+ * @np: device node of the DSI controller
+ *
+ * For drivers that drive DSI-attached device through msm as an in-kernel DRM client
+ * (Boox Onyx Go 7 e-ink driver). Returns NULL until msm has bound and set up this controller.
+ */
+struct drm_device *msm_dsi_drm_device(struct device_node *np)
+{
+	struct platform_device *pdev = of_find_device_by_node(np);
+	struct msm_dsi *msm_dsi;
+	struct drm_device *dev = NULL;
+
+	if (!pdev)
+		return NULL;
+	msm_dsi = platform_get_drvdata(pdev);
+	if (msm_dsi)
+		dev = msm_dsi->dev;
+	put_device(&pdev->dev);
+	return dev;
+}
+EXPORT_SYMBOL_GPL(msm_dsi_drm_device);
 
 static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,mdss-dsi-ctrl" },
