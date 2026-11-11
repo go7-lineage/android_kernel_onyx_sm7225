@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config DRM_ONYX_EPD
+	tristate "Onyx Boox Go 7 e-ink display"
+	depends on DRM && OF && ARM64 && KERNEL_MODE_NEON
+	depends on DRM_MSM
+	select DRM_CLIENT
+	select DRM_KMS_HELPER
+	select DRM_GEM_SHMEM_HELPER
+	select FW_LOADER
+	help
+	  E-ink display of the Onyx Boox Go 7.

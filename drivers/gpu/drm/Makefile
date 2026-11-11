@@ -252,3 +252,4 @@ quiet_cmd_hdrtest = HDRTEST $(patsubst %.hdrtest,%.h,$@)
 
 $(obj)/%.hdrtest: $(src)/%.h FORCE
 	$(call if_changed_dep,hdrtest)
+obj-$(CONFIG_DRM_ONYX_EPD) += onyx/
