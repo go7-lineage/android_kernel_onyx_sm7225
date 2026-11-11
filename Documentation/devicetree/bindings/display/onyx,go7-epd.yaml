@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/onyx,go7-epd.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Onyx Boox Go 7 e-ink display controller
+
+maintainers:
+  - ui-1 <134524800+ui-1@users.noreply.github.com>
+
+description:
+  Virtual display device for Go 7's e-ink panel.
+
+properties:
+  compatible:
+    const: onyx,go7-epd
+
+  onyx,dsi:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: DSI host the onyx,go7-eink-dsi panel is attached to.
+
+  onyx,tcon:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: TCON that has to be running before frames are sent.
+
+  display-supply:
+    description: Panel source/gate driver rails (VPOS/VNEG, VGH/VGL).
+
+  vcom-supply:
+    description: Panel VCOM set from bootloader's fp9931:vcom= argument.
+
+  v3p3-supply:
+    description: 3.3 V panel logic rail.
+
+required:
+  - compatible
+  - onyx,dsi
+  - display-supply
+  - vcom-supply
+
+additionalProperties: false
+
+examples:
+  - |
+    epd {
+        compatible = "onyx,go7-epd";
+        onyx,dsi = <&mdss_dsi0>;
+        onyx,tcon = <&tcon>;
+        display-supply = <&epd_vposneg>;
+        vcom-supply = <&epd_vcom>;
+        v3p3-supply = <&epd_v3p3>;
+    };
+...
