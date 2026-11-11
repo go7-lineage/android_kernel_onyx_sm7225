@@ -50,6 +50,12 @@ config AD525X_DPOT_SPI
 	  To compile this driver as a module, choose M here: the
 	  module will be called ad525x_dpot-spi.
 
+config ONYX_GO7_TCON
+	tristate "Onyx Boox Go 7 e-ink TCON"
+	depends on I2C && OF
+	help
+	  Powers up and releases the FPGA that bridges DSI to the Go 7's e-ink panel.
+
 config DUMMY_IRQ
 	tristate "Dummy IRQ handler"
 	help

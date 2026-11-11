@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/onyx,go7-mxo1300.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Onyx Boox Go 7 e-ink TCON
+
+maintainers:
+  - ui-1 <134524800+ui-1@users.noreply.github.com>
+
+description:
+  FPGA between SoC's DSI output and the e-ink panel's source drivers.
+
+properties:
+  compatible:
+    const: onyx,go7-mxo1300
+
+  reg:
+    maxItems: 1
+
+  reset-gpios:
+    maxItems: 1
+
+  done-gpios:
+    description: Configuration DONE output of the FPGA (input only).
+    maxItems: 1
+
+  vsys-supply: true
+  vdd1v8-supply: true
+  vdd3v-supply: true
+  vdd1v2-supply: true
+
+required:
+  - compatible
+  - reg
+  - reset-gpios
+  - vdd1v8-supply
+  - vdd3v-supply
+  - vdd1v2-supply
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        tcon@40 {
+            compatible = "onyx,go7-mxo1300";
+            reg = <0x40>;
+            reset-gpios = <&tlmm 12 GPIO_ACTIVE_LOW>;
+            vdd1v8-supply = <&vreg_1v8>;
+            vdd3v-supply = <&vreg_3v>;
+            vdd1v2-supply = <&vreg_1v2>;
+        };
+    };

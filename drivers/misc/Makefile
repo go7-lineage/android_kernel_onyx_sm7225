@@ -76,5 +76,6 @@ obj-y				+= keba/
 obj-$(CONFIG_UID_SYS_STATS)	+= uid_sys_stats.o
 obj-y				+= amd-sbi/
 obj-$(CONFIG_MISC_RP1)		+= rp1/
+obj-$(CONFIG_ONYX_GO7_TCON)		+= onyx-go7-tcon.o
 obj-$(CONFIG_PKVM_SMC_FILTER)	+= pkvm-smc/
 obj-$(CONFIG_PKVM_IOMMU_TEMPLATE)  += pkvm-iommu-temp/
