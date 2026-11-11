@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/power/supply/qcom,pm6150-qg.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Qualcomm PM6150/PM7250B QGauge fuel gauge
+
+maintainers:
+  - ui-1 <134524800+ui-1@users.noreply.github.com>
+
+description:
+  The QGauge block of the PM6150 and PM7250B PMICs measures battery voltage and current.
+  Driver reports them with battery temperature from a thermistor ADC channel and the battery
+  data from monitored-battery. Some of its state lives in SDAM region
+
+allOf:
+  - $ref: power-supply.yaml#
+
+properties:
+  compatible:
+    oneOf:
+      - const: qcom,pm6150-qg
+      - items:
+          - const: qcom,pm7250b-qg
+          - const: qcom,pm6150-qg
+
+  reg:
+    maxItems: 1
+
+  io-channels:
+    items:
+      - description: battery thermistor (temperature in millidegrees Celsius)
+      - description: battery ID resistor
+
+  io-channel-names:
+    items:
+      - const: batt-therm
+      - const: batt-id
+
+  nvmem:
+    maxItems: 1
+    description: SDAM region holding QGauge state
+
+  monitored-battery: true
+
+required:
+  - compatible
+  - reg
+  - io-channels
+  - io-channel-names
+  - nvmem
+  - monitored-battery
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/iio/qcom,spmi-vadc.h>
+
+    pmic {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        battery@4800 {
+            compatible = "qcom,pm7250b-qg", "qcom,pm6150-qg";
+            reg = <0x4800>;
+            io-channels = <&bat_therm_sensor>,
+                          <&pm7250b_adc ADC5_BAT_ID_100K_PU>;
+            io-channel-names = "batt-therm",
+                               "batt-id";
+            nvmem = <&pm7250b_qg_sdam>;
+            monitored-battery = <&battery>;
+        };
+    };
