@@ -969,6 +969,7 @@ properties:
       - items:
           - enum:
               - fairphone,fp4
+              - onyx,go7
           - const: qcom,sm7225
 
       - items:
