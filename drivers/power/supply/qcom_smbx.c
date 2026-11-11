@@ -256,6 +256,13 @@ struct smb_chip {
 	struct iio_channel *usb_in_v_chan;
 
 	struct power_supply *chg_psy;
+
+	struct mutex limit_lock;
+	int limit_start, limit_end;
+	int batt_capacity;
+	bool limit_stopped;
+	struct notifier_block psy_nb;
+	struct work_struct limit_work;
 };
 
 struct smb_match_data {
@@ -277,6 +284,8 @@ static enum power_supply_property smb_properties[] = {
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_USB_TYPE,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD,
 };
 
 static bool smb_is_charging(struct smb_chip *chip)
@@ -656,6 +665,77 @@ static int smb_get_prop_health(struct smb_chip *chip, int *val)
 	return -EINVAL;
 }
 
+/*
+ * Stop charging once the battery reaches limit_end and resume at limit_start or below.
+ */
+static void smb_limit_work(struct work_struct *work)
+{
+	struct smb_chip *chip = container_of(work, struct smb_chip, limit_work);
+	bool stop;
+	int rc;
+
+	mutex_lock(&chip->limit_lock);
+	stop = chip->limit_stopped;
+	if (chip->limit_end >= 100 || chip->batt_capacity < 0)
+		stop = false;
+	else if (chip->batt_capacity >= chip->limit_end)
+		stop = true;
+	else if (chip->batt_capacity <= chip->limit_start)
+		stop = false;
+	if (stop != chip->limit_stopped) {
+		rc = regmap_update_bits(chip->regmap, chip->base + CHARGING_ENABLE_CMD,
+					CHARGING_ENABLE_CMD_BIT, stop ? 0 : CHARGING_ENABLE_CMD_BIT);
+		if (rc < 0) {
+			dev_err(chip->dev, "Couldn't %s charging: %d\n", stop ? "stop" : "resume", rc);
+		} else {
+			chip->limit_stopped = stop;
+			dev_info(chip->dev, "charging %s at %d%%\n", stop ? "stopped" : "resumed",
+				 chip->batt_capacity);
+		}
+	}
+	mutex_unlock(&chip->limit_lock);
+	power_supply_changed(chip->chg_psy);
+}
+
+static int smb_psy_notifier(struct notifier_block *nb, unsigned long event, void *data)
+{
+	struct smb_chip *chip = container_of(nb, struct smb_chip, psy_nb);
+	struct power_supply *psy = data;
+	union power_supply_propval val;
+
+	if (event != PSY_EVENT_PROP_CHANGED || psy->desc->type != POWER_SUPPLY_TYPE_BATTERY)
+		return NOTIFY_DONE;
+	if (power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &val))
+		return NOTIFY_DONE;
+	if (READ_ONCE(chip->batt_capacity) != val.intval) {
+		WRITE_ONCE(chip->batt_capacity, val.intval);
+		schedule_work(&chip->limit_work);
+	}
+	return NOTIFY_OK;
+}
+
+static int smb_set_limit(struct smb_chip *chip, bool end, int val)
+{
+	if (val < 0 || val > 100)
+		return -EINVAL;
+	mutex_lock(&chip->limit_lock);
+	if (val == 100) {
+		chip->limit_start = 100;
+		chip->limit_end = 100;
+	} else if (end) {
+		chip->limit_end = max(val, 1);
+		if (chip->limit_start >= chip->limit_end)
+			chip->limit_start = chip->limit_end - 1;
+	} else {
+		chip->limit_start = val;
+		if (chip->limit_end <= val)
+			chip->limit_end = val + 1;
+	}
+	mutex_unlock(&chip->limit_lock);
+	schedule_work(&chip->limit_work);
+	return 0;
+}
+
 static int smb_get_property(struct power_supply *psy,
 			     enum power_supply_property psp,
 			     union power_supply_propval *val)
@@ -690,6 +770,12 @@ static int smb_get_property(struct power_supply *psy,
 		return smb_get_prop_health(chip, &val->intval);
 	case POWER_SUPPLY_PROP_USB_TYPE:
 		return smb_apsd_get_charger_type(chip, &val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+		val->intval = chip->limit_start;
+		return 0;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+		val->intval = chip->limit_end;
+		return 0;
 	default:
 		dev_err(chip->dev, "invalid property: %d\n", psp);
 		return -EINVAL;
@@ -708,6 +794,10 @@ static int smb_set_property(struct power_supply *psy,
 					  USBIN_SUSPEND_BIT, !val->intval);
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		return smb_set_current_limit(chip, val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+		return smb_set_limit(chip, false, val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+		return smb_set_limit(chip, true, val->intval);
 	default:
 		dev_err(chip->dev, "No setter for property: %d\n", psp);
 		return -EINVAL;
@@ -720,6 +810,8 @@ static int smb_property_is_writable(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
 		return 1;
 	default:
 		return 0;
@@ -1037,12 +1129,20 @@ static int smb_init_irq(struct smb_chip *chip, int *irq, const char *name,
 	return 0;
 }
 
+static void smb_unreg_notifier(void *data)
+{
+	struct smb_chip *chip = data;
+
+	power_supply_unreg_notifier(&chip->psy_nb);
+}
+
 static int smb_probe(struct platform_device *pdev)
 {
 	struct power_supply_config supply_config = {};
 	struct power_supply_desc *desc;
 	struct smb_chip *chip;
 	const struct smb_match_data *match_data;
+	unsigned int fcc_ua = 1950000;
 	int rc, irq;
 
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
@@ -1051,6 +1151,10 @@ static int smb_probe(struct platform_device *pdev)
 
 	chip->dev = &pdev->dev;
 	chip->name = pdev->name;
+	chip->limit_start = 100;
+	chip->limit_end = 100;
+	chip->batt_capacity = -1;
+	mutex_init(&chip->limit_lock);
 
 	chip->regmap = dev_get_regmap(pdev->dev.parent, NULL);
 	if (!chip->regmap)
@@ -1108,6 +1212,8 @@ static int smb_probe(struct platform_device *pdev)
 	if (rc)
 		return dev_err_probe(chip->dev, rc,
 				     "Failed to get battery info\n");
+	if (chip->batt_info->constant_charge_current_max_ua > 0)
+		fcc_ua = min_t(unsigned int, fcc_ua, chip->batt_info->constant_charge_current_max_ua);
 	if (chip->batt_info->constant_charge_current_max_ua == -EINVAL)
 		chip->batt_info->constant_charge_current_max_ua = DCP_CURRENT_UA;
 
@@ -1157,7 +1263,7 @@ static int smb_probe(struct platform_device *pdev)
 	 * reporting.
 	 */
 	rc = regmap_write(chip->regmap, chip->base + FAST_CHARGE_CURRENT_CFG,
-			  1950000 / chip->current_step_size_ua);
+			  fcc_ua / chip->current_step_size_ua);
 	if (rc < 0)
 		return dev_err_probe(chip->dev, rc,
 				     "Couldn't write fast charge current cfg");
@@ -1167,6 +1273,17 @@ static int smb_probe(struct platform_device *pdev)
 	if (rc < 0)
 		return dev_err_probe(chip->dev, rc,
 				     "Couldn't write fast AICL rerun time");
+
+	rc = devm_work_autocancel(chip->dev, &chip->limit_work, smb_limit_work);
+	if (rc)
+		return rc;
+	chip->psy_nb.notifier_call = smb_psy_notifier;
+	rc = power_supply_reg_notifier(&chip->psy_nb);
+	if (rc)
+		return rc;
+	rc = devm_add_action_or_reset(chip->dev, smb_unreg_notifier, chip);
+	if (rc)
+		return rc;
 
 	/* Initialise charger state */
 	schedule_delayed_work(&chip->status_change_work, 0);
