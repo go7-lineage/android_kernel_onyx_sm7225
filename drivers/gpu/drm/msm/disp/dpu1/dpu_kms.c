@@ -563,6 +563,12 @@ static int dpu_kms_dsi_set_te_source(struct msm_display_info *info,
 		return 0;
 	}
 
+	if (!strcmp(te_source, "none")) {
+		info->vsync_source = DPU_VSYNC_SOURCE_GPIO_0;
+		info->no_te = true;
+		return 0;
+	}
+
 	/* we can not use match_string since dpu_vsync_sources is a sparse array */
 	for (i = 0; i < ARRAY_SIZE(dpu_vsync_sources); i++) {
 		if (dpu_vsync_sources[i] &&

@@ -359,6 +359,16 @@ static void dpu_encoder_phys_cmd_tearcheck_config(
 			 phys_enc->hw_intf ? phys_enc->hw_intf->idx - INTF_0 : -1,
 			 phys_enc->hw_pp ? phys_enc->hw_pp->idx - PINGPONG_0 : -1);
 
+	if (phys_enc->no_te) {
+		if (phys_enc->has_intf_te) {
+			if (phys_enc->hw_intf->ops.disable_tearcheck)
+				phys_enc->hw_intf->ops.disable_tearcheck(phys_enc->hw_intf);
+		} else if (phys_enc->hw_pp->ops.disable_tearcheck) {
+			phys_enc->hw_pp->ops.disable_tearcheck(phys_enc->hw_pp);
+		}
+		return;
+	}
+
 	mode = &phys_enc->cached_mode;
 
 	dpu_kms = phys_enc->dpu_kms;

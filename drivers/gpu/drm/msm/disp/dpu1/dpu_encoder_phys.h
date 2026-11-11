@@ -172,6 +172,7 @@ enum dpu_intr_idx {
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
  * @irq:			IRQ indices
  * @has_intf_te:		Interface TE configuration support
+ * @no_te:			The panel has no TE signal, tear check off
  */
 struct dpu_encoder_phys {
 	struct drm_encoder *parent;
@@ -198,6 +199,7 @@ struct dpu_encoder_phys {
 	wait_queue_head_t pending_kickoff_wq;
 	unsigned int irq[INTR_IDX_MAX];
 	bool has_intf_te;
+	bool no_te;
 };
 
 static inline int dpu_encoder_phys_inc_pending(struct dpu_encoder_phys *phys)
@@ -257,6 +259,7 @@ struct dpu_encoder_phys_cmd {
  * @hw_intf:		Hardware interface to the intf registers
  * @hw_wb:		Hardware interface to the wb registers
  * @enc_spinlock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
+ * @no_te:		The panel has no TE signal (CMD mode)
  */
 struct dpu_enc_phys_init_params {
 	struct dpu_kms *dpu_kms;
@@ -265,6 +268,7 @@ struct dpu_enc_phys_init_params {
 	struct dpu_hw_intf *hw_intf;
 	struct dpu_hw_wb *hw_wb;
 	spinlock_t *enc_spinlock;
+	bool no_te;
 };
 
 /**

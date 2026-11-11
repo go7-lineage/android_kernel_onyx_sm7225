@@ -787,6 +787,9 @@ static void _dpu_encoder_update_vsync_source(struct dpu_encoder_virt *dpu_enc,
 	vsync_cfg.vsync_source = disp_info->vsync_source;
 	vsync_cfg.frame_rate = drm_mode_vrefresh(&dpu_enc->base.crtc->state->adjusted_mode);
 
+	if (disp_info->no_te)
+		return;
+
 	if (hw_mdptop->ops.setup_vsync_source) {
 		for (i = 0; i < dpu_enc->num_phys_encs; i++)
 			vsync_cfg.ppnumber[i] = dpu_enc->hw_pp[i]->idx;
@@ -2640,6 +2643,7 @@ static int dpu_encoder_setup_display(struct dpu_encoder_virt *dpu_enc,
 	phys_params.dpu_kms = dpu_kms;
 	phys_params.parent = &dpu_enc->base;
 	phys_params.enc_spinlock = &dpu_enc->enc_spinlock;
+	phys_params.no_te = disp_info->no_te;
 
 	WARN_ON(disp_info->num_of_h_tiles < 1);
 
@@ -2931,6 +2935,7 @@ void dpu_encoder_phys_init(struct dpu_encoder_phys *phys_enc,
 	phys_enc->dpu_kms = p->dpu_kms;
 	phys_enc->split_role = p->split_role;
 	phys_enc->enc_spinlock = p->enc_spinlock;
+	phys_enc->no_te = p->no_te;
 	phys_enc->enable_state = DPU_ENC_DISABLED;
 
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
