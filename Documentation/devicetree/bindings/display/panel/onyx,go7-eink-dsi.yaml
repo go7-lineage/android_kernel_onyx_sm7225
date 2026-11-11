@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/panel/onyx,go7-eink-dsi.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Onyx Boox Go 7 e-ink panel DSI link
+
+maintainers:
+  - ui-1 <134524800+ui-1@users.noreply.github.com>
+
+description:
+  MIPI DSI command-mode link from SoC to e-ink TCON.
+
+allOf:
+  - $ref: panel-common.yaml#
+
+properties:
+  compatible:
+    const: onyx,go7-eink-dsi
+
+  reg:
+    maxItems: 1
+
+  reset-gpios: true
+  port: true
+
+required:
+  - compatible
+  - reg
+  - port
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+
+    dsi {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        panel@0 {
+            compatible = "onyx,go7-eink-dsi";
+            reg = <0>;
+            reset-gpios = <&tlmm 51 GPIO_ACTIVE_LOW>;
+
+            port {
+                panel_in: endpoint {
+                    remote-endpoint = <&dsi0_out>;
+                };
+            };
+        };
+    };
+...
