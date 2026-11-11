@@ -29,6 +29,7 @@
  *                      based on num_of_h_tiles
  * @is_cmd_mode		Boolean to indicate if the CMD mode is requested
  * @vsync_source:	Source of the TE signal for DSI CMD devices
+ * @no_te:		DSI CMD device without TE signal (no tear check)
  */
 struct msm_display_info {
 	enum dpu_intf_type intf_type;
@@ -36,6 +37,7 @@ struct msm_display_info {
 	uint32_t h_tile_instance[MAX_H_TILES_PER_DISPLAY];
 	bool is_cmd_mode;
 	enum dpu_vsync_source vsync_source;
+	bool no_te;
 };
 
 void dpu_encoder_assign_crtc(struct drm_encoder *encoder,

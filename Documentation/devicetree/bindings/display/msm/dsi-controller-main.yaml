@@ -173,9 +173,11 @@ properties:
                 $ref: /schemas/types.yaml#/definitions/string
                 description:
                   Specifies the source of vsync signal from the panel used for
-                  tearing elimination.
+                  tearing elimination. "none" is for command mode panels
+                  without a TE signal; frames then start at kickoff.
                 default: mdp_vsync_p
                 enum:
+                  - none
                   - mdp_vsync_p
                   - mdp_vsync_s
                   - mdp_vsync_e
