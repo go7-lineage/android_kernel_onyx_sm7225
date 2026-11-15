@@ -556,6 +556,7 @@ static int epd_setup_output(struct onyx_epd *p)
 	}
 	p->client_ok = true;
 	drm_info(&p->drm, "output on %s, buffer pitch %u\n", out->driver->name, p->buf[0]->pitch);
+	epd_link_hint(p);
 	return 0;
 err:
 	for (i = 0; i < EPD_NBUF; i++)
