@@ -1444,6 +1444,11 @@ static void clk_core_disable_unprepare(struct clk_core *core)
 	clk_core_unprepare_lock(core);
 }
 
+static bool clk_dev_holds_state(struct device *dev)
+{
+	return dev && dev->driver && dev->driver->sync_state == clk_sync_state;
+}
+
 static void __init clk_unprepare_unused_subtree(struct clk_core *core)
 {
 	struct clk_core *child;
@@ -1453,7 +1458,7 @@ static void __init clk_unprepare_unused_subtree(struct clk_core *core)
 	hlist_for_each_entry(child, &core->children, child_node)
 		clk_unprepare_unused_subtree(child);
 
-	if (dev_has_sync_state(core->dev) &&
+	if (clk_dev_holds_state(core->dev) &&
 	    !(core->flags & CLK_DONT_HOLD_STATE))
 		return;
 
@@ -1483,7 +1488,7 @@ static void __init clk_disable_unused_subtree(struct clk_core *core)
 	hlist_for_each_entry(child, &core->children, child_node)
 		clk_disable_unused_subtree(child);
 
-	if (dev_has_sync_state(core->dev) &&
+	if (clk_dev_holds_state(core->dev) &&
 	    !(core->flags & CLK_DONT_HOLD_STATE))
 		return;
 
@@ -2109,7 +2114,7 @@ static void clk_core_hold_state(struct clk_core *core)
 	if (core->need_sync || !core->boot_enabled)
 		return;
 
-	if (core->orphan || !dev_has_sync_state(core->dev))
+	if (core->orphan || !clk_dev_holds_state(core->dev))
 		return;
 
 	if (core->flags & CLK_DONT_HOLD_STATE)
