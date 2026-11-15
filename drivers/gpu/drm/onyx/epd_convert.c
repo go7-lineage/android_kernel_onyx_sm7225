@@ -5,14 +5,17 @@
 #include "epd_core.h"
 
 /* rgb32_to_4bit_32_neon / ggg32_to_4bit_32_neon: Y = (77 R + 151 G + 28 B) >> 8, then & mask */
-void epd_rgba_to_grey_scalar(const u8 *src, size_t sstride, u8 *dst, size_t dstride, u32 w, u32 h, u8 mask, bool ggg){
+void epd_rgba_to_grey_scalar(const u8 *src, size_t sstride, u8 *dst, size_t dstride, u32 w, u32 h, u8 mask, bool ggg,
+			     bool bgr)
+{
+	const u32 k0 = bgr ? 28 : 77, k2 = bgr ? 77 : 28;
 	u32 x, y;
 
 	for (y = 0; y < h; y++, src += sstride, dst += dstride)
 		for (x = 0; x < w; x++) {
 			const u8 *p = src + 4 * x;
 
-			dst[x] = (ggg ? p[0] : (77 * p[0] + 151 * p[1] + 28 * p[2]) >> 8) & mask;
+			dst[x] = (ggg ? p[0] : (k0 * p[0] + 151 * p[1] + k2 * p[2]) >> 8) & mask;
 		}
 }
 
@@ -248,7 +251,7 @@ void epd_regal_aa_mark(const u8 *levels, size_t stride, u32 w, u32 h, u8 *mark, 
 }
 
 void epd_convert_update(const u8 *rgba, size_t rgba_stride, u8 *grey, size_t grey_stride, u32 left,
-			u32 top, u32 w, u32 h, u32 flags, bool ggg, const u8 *gamma, int *err)
+			u32 top, u32 w, u32 h, u32 flags, bool ggg, bool bgr, const u8 *gamma, int *err)
 {
 	u8 mask = flags & EPD_DITHER_FLAGS ? 0xff : 0xf0;
 	const u8 *src = rgba + top * rgba_stride + 4 * (size_t)left;
@@ -257,10 +260,10 @@ void epd_convert_update(const u8 *rgba, size_t rgba_stride, u8 *grey, size_t gre
 
 #ifdef EPD_NEON
 	epd_simd_begin();
-	epd_rgba_to_grey_neon(src, rgba_stride, dst, grey_stride, w, h, mask, ggg);
+	epd_rgba_to_grey_neon(src, rgba_stride, dst, grey_stride, w, h, mask, ggg, bgr);
 	epd_simd_end();
 #else
-	epd_rgba_to_grey_scalar(src, rgba_stride, dst, grey_stride, w, h, mask, ggg);
+	epd_rgba_to_grey_scalar(src, rgba_stride, dst, grey_stride, w, h, mask, ggg, bgr);
 #endif
 	if (gamma)
 		epd_gamma(dst, grey_stride, w, h, gamma);

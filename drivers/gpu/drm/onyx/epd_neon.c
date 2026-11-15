@@ -9,7 +9,7 @@
 /* same as in epd_core.h */
 void epd_row_neon(const uint8_t *state, const uint8_t *owner, const uint8_t *const *cur, uint32_t *out, uint32_t npix);
 void epd_rgba_to_grey_neon(const uint8_t *src, unsigned long sstride, uint8_t *dst, unsigned long dstride,
-			   uint32_t w, uint32_t h, uint8_t mask, int ggg);
+			   uint32_t w, uint32_t h, uint8_t mask, int ggg, int bgr);
 void epd_regal_aa_mark_neon(const uint8_t *levels, unsigned long stride, uint32_t w, uint32_t h, uint8_t *mark, int shift);
 void epd_threshold16_neon(uint8_t *buf, uint32_t w, const uint8_t *t16);
 void epd_threshold16_neon(uint8_t *buf, uint32_t w, const uint8_t *t16)
@@ -123,9 +123,10 @@ void epd_row_neon(const uint8_t *state, const uint8_t *owner, const uint8_t *con
 }
 
 void epd_rgba_to_grey_neon(const uint8_t *src, unsigned long sstride, uint8_t *dst, unsigned long dstride,
-			   uint32_t w, uint32_t h, uint8_t mask, int ggg)
+			   uint32_t w, uint32_t h, uint8_t mask, int ggg, int bgr)
 {
-	const uint8x8_t kr = vdup_n_u8(77), kg = vdup_n_u8(151), kb = vdup_n_u8(28);
+	const uint8_t c0 = bgr ? 28 : 77, c2 = bgr ? 77 : 28;
+	const uint8x8_t k0 = vdup_n_u8(c0), kg = vdup_n_u8(151), k2 = vdup_n_u8(c2);
 	const uint8x16_t m = vdupq_n_u8(mask);
 	uint32_t x, y;
 
@@ -137,13 +138,13 @@ void epd_rgba_to_grey_neon(const uint8_t *src, unsigned long sstride, uint8_t *d
 			if (ggg) {
 				g = p.val[0];
 			} else {
-				uint16x8_t lo = vmull_u8(vget_low_u8(p.val[0]), kr);
-				uint16x8_t hi = vmull_u8(vget_high_u8(p.val[0]), kr);
+				uint16x8_t lo = vmull_u8(vget_low_u8(p.val[0]), k0);
+				uint16x8_t hi = vmull_u8(vget_high_u8(p.val[0]), k0);
 
 				lo = vmlal_u8(lo, vget_low_u8(p.val[1]), kg);
 				hi = vmlal_u8(hi, vget_high_u8(p.val[1]), kg);
-				lo = vmlal_u8(lo, vget_low_u8(p.val[2]), kb);
-				hi = vmlal_u8(hi, vget_high_u8(p.val[2]), kb);
+				lo = vmlal_u8(lo, vget_low_u8(p.val[2]), k2);
+				hi = vmlal_u8(hi, vget_high_u8(p.val[2]), k2);
 				g = vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8));
 			}
 			vst1q_u8(dst + x, vandq_u8(g, m));
@@ -151,7 +152,7 @@ void epd_rgba_to_grey_neon(const uint8_t *src, unsigned long sstride, uint8_t *d
 		for (; x < w; x++) {
 			const uint8_t *q = src + 4 * x;
 
-			dst[x] = (ggg ? q[0] : (77 * q[0] + 151 * q[1] + 28 * q[2]) >> 8) & mask;
+			dst[x] = (ggg ? q[0] : (c0 * q[0] + 151 * q[1] + c2 * q[2]) >> 8) & mask;
 		}
 	}
 }

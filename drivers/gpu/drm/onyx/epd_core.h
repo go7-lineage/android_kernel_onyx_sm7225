@@ -119,8 +119,10 @@ bool epd_engine_busy(const struct epd_engine *e);
 int epd_engine_tick(struct epd_engine *e, u32 *buf);
 void epd_row_scalar(const u8 *state, const u8 *owner, const u8 *const *cur, u32 *out, u32 npix);
 void epd_row_neon(const u8 *state, const u8 *owner, const u8 *const *cur, u32 *out, u32 npix);
-void epd_rgba_to_grey_scalar(const u8 *src, size_t sstride, u8 *dst, size_t dstride, u32 w, u32 h, u8 mask, bool ggg);
-void epd_rgba_to_grey_neon(const u8 *src, unsigned long sstride, u8 *dst, unsigned long dstride, u32 w, u32 h, u8 mask, int ggg);
+void epd_rgba_to_grey_scalar(const u8 *src, size_t sstride, u8 *dst, size_t dstride, u32 w, u32 h, u8 mask, bool ggg,
+			     bool bgr);
+void epd_rgba_to_grey_neon(const u8 *src, unsigned long sstride, u8 *dst, unsigned long dstride, u32 w, u32 h, u8 mask, int ggg,
+			   int bgr);
 void epd_regal_aa_mark_neon(const u8 *levels, unsigned long stride, u32 w, u32 h, u8 *mark, int shift);
 void epd_gamma(u8 *buf, size_t stride, u32 w, u32 h, const u8 *lut);
 void epd_dither_y1(u8 *buf, u32 w, u32 h, size_t stride, int *err, int pix_level, bool grey_white);
@@ -134,7 +136,7 @@ void epd_dither_y1_ordered(u8 *buf, u32 w, u32 h, size_t stride, u32 x0, u32 y0)
 void epd_threshold16_neon(u8 *buf, u32 w, const u8 *t16);
 void epd_regal_aa_mark(const u8 *levels, size_t stride, u32 w, u32 h, u8 *mark, int shift);
 void epd_convert_update(const u8 *rgba, size_t rgba_stride, u8 *grey, size_t grey_stride, u32 left,
-			u32 top, u32 w, u32 h, u32 flags, bool ggg, const u8 *gamma, int *err);
+			u32 top, u32 w, u32 h, u32 flags, bool ggg, bool bgr, const u8 *gamma, int *err);
 
 struct epd_request {
 	u16 top, left, width, height;

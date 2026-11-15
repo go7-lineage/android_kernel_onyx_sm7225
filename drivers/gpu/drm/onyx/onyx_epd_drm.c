@@ -291,24 +291,25 @@ static bool epd_upd_to_req(const struct onyx_epdc_upd *u, struct epd_request *r)
 	return true;
 }
 
-static void epd_submit(struct onyx_epd *p, const struct epd_request *r, const u8 *rgba, u32 pitch)
+static void epd_submit(struct onyx_epd *p, const struct epd_request *r, const u8 *rgba, u32 pitch, bool bgr)
 {
 	struct epd_decision d;
 
 	epd_policy_apply(&p->pol, r, &d);
 	epd_convert_update(rgba, pitch, p->grey, EPD_W, r->left, r->top, r->width, r->height,
-			   d.flags | (y1_ordered ? EPD_CONV_Y1_ORDERED : 0), false, NULL, p->err);
+			   d.flags | (y1_ordered ? EPD_CONV_Y1_ORDERED : 0), false, bgr, NULL, p->err);
 	epd_queue_push(&p->q, &d);
 	p->kick = true;
 }
 
-static void epd_request(struct onyx_epd *p, const struct onyx_epdc_upd *u, const u8 *rgba, u32 pitch)
+static void epd_request(struct onyx_epd *p, const struct onyx_epdc_upd *u, const u8 *rgba, u32 pitch,
+			bool bgr)
 {
 	struct epd_request r;
 
 	if (epd_upd_to_req(u, &r)) {
 		epd_link_hint(p);
-		epd_submit(p, &r, rgba, pitch);
+		epd_submit(p, &r, rgba, pitch, bgr);
 	}
 }
 
@@ -610,7 +611,14 @@ static void epd_setup_work(struct work_struct *w)
 	wake_up(&p->wq);
 }
 
-static const u32 epd_formats[] = { DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888 };
+static const u32 epd_formats[] = {
+	DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888, DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888,
+};
+
+static bool epd_fb_bgr(const struct drm_framebuffer *fb)
+{
+	return fb->format->format == DRM_FORMAT_ARGB8888 || fb->format->format == DRM_FORMAT_XRGB8888;
+}
 
 static void epd_plane_reset(struct drm_plane *plane)
 {
@@ -717,7 +725,7 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 		size_t i, n = min_t(size_t, s->updates->length / sizeof(*u), 8);
 
 		for (i = 0; i < n; i++)
-			epd_request(p, &u[i], vaddr, fb->pitches[0]);
+			epd_request(p, &u[i], vaddr, fb->pitches[0], epd_fb_bgr(fb));
 		if (p->ui_ok)
 			epd_ui_invalidate(&p->ui);
 	} else if (ui && p->ui_ok) {
@@ -736,7 +744,7 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 			p->ui_updates++;
 			if (cut >= 0)
 				epd_set_cut(p, cut);
-			epd_submit(p, &r, vaddr, fb->pitches[0]);
+			epd_submit(p, &r, vaddr, fb->pitches[0], epd_fb_bgr(fb));
 			mod_delayed_work(system_unbound_wq, &p->ui_work, 0);
 		}
 	} else {
@@ -750,7 +758,7 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 				.height = drm_rect_height(&r), .waveform_mode = 0xff,
 			};
 
-			epd_request(p, &u, vaddr, fb->pitches[0]);
+			epd_request(p, &u, vaddr, fb->pitches[0], epd_fb_bgr(fb));
 		}
 	}
 	mutex_unlock(&p->lock);
@@ -1012,7 +1020,7 @@ static ssize_t test_pattern_store(struct device *dev, struct device_attribute *a
 			img[y * EPD_W + x] = 0xff000000u | g << 16 | g << 8 | g;
 		}
 	mutex_lock(&p->lock);
-	epd_request(p, &u, (const u8 *)img, EPD_W * 4);
+	epd_request(p, &u, (const u8 *)img, EPD_W * 4, false);
 	mutex_unlock(&p->lock);
 	wake_up(&p->wq);
 	vfree(img);
@@ -1060,7 +1068,7 @@ static int epd_resend(struct onyx_epd *p, const struct epd_request *r)
 	if (!ret) {
 		mutex_lock(&p->lock);
 		if (r)
-			epd_submit(p, r, data[0].vaddr, fb->pitches[0]);
+			epd_submit(p, r, data[0].vaddr, fb->pitches[0], epd_fb_bgr(fb));
 		mutex_unlock(&p->lock);
 		wake_up(&p->wq);
 		drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
