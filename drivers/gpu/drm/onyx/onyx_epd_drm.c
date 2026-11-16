@@ -4,6 +4,9 @@
  */
 
 #include <linux/delay.h>
+#include <linux/dma-buf.h>
+#include <linux/dma-direct.h>
+#include <linux/dma-mapping.h>
 #include <linux/firmware.h>
 #include <linux/i2c.h>
 #include <linux/kthread.h>
@@ -68,6 +71,19 @@ MODULE_PARM_DESC(y1_ordered, "Y1 (speed mode 0x2000) as ordered dither instead o
 static bool ui = true;
 module_param(ui, bool, 0644);
 MODULE_PARM_DESC(ui, "refresh policy for commits without EPD_UPDATES");
+static bool fast_read = true;
+module_param(fast_read, bool, 0644);
+MODULE_PARM_DESC(fast_read, "read imported frames through a cached mapping");
+
+#define EPD_NMAP	4
+#define EPD_MAP_PAGES	4096
+
+struct epd_fbmap {
+	struct drm_gem_object *obj;
+	struct sg_table *sgt;
+	void *vaddr;
+	u64 used;
+};
 
 struct onyx_plane_state {
 	struct drm_shadow_plane_state base;
@@ -96,13 +112,16 @@ struct onyx_epd {
 	u8 *grey;
 	u8 *grey_in;
 	int *err;
+	struct epd_fbmap fbmap[EPD_NMAP];
+	u64 fbmap_seq;
+	struct page **fbmap_pages;
 	u32 cut;
 
 	struct epd_ui ui;
 	bool ui_ok;
 	struct epd_ui_cfg ui_cfg;
 	struct delayed_work ui_work;
-	u64 ui_frames, ui_updates, ui_passes;
+	u64 ui_frames, ui_updates, ui_passes, ui_cached;
 	u32 ui_us_last, ui_us_max;
 
 	struct epd_stat { u32 last, max; u64 sum, n; } st_tick, st_copy, st_commit, st_link, st_power, st_first;
@@ -291,6 +310,82 @@ static bool epd_upd_to_req(const struct onyx_epdc_upd *u, struct epd_request *r)
 	r->marker = u->update_marker;
 	r->flags = u->flag;
 	return true;
+}
+
+static void epd_fbmap_drop(struct epd_fbmap *m)
+{
+	if (!m->obj)
+		return;
+	vunmap(m->vaddr);
+	dma_buf_unmap_attachment_unlocked(m->obj->import_attach, m->sgt, DMA_FROM_DEVICE);
+	drm_gem_object_put(m->obj);
+	m->obj = NULL;
+}
+
+static bool epd_sgt_direct(struct device *dev, struct sg_table *sgt)
+{
+	struct scatterlist *sg;
+	unsigned int i;
+
+	if (sgt->nents != sgt->orig_nents)
+		return false;
+	for_each_sgtable_dma_sg(sgt, sg, i)
+		if (sg_dma_address(sg) != phys_to_dma(dev, sg_phys(sg)) || sg_dma_len(sg) != sg->length)
+			return false;
+	return true;
+}
+
+static const u8 *epd_fb_cached(struct onyx_epd *p, struct drm_framebuffer *fb)
+{
+	struct drm_gem_object *obj = fb->obj[0];
+	struct epd_fbmap *m = NULL, *lru = &p->fbmap[0];
+	size_t n = obj->size >> PAGE_SHIFT;
+	struct dma_buf_attachment *attach;
+	int i;
+
+	if (!fast_read || !drm_gem_is_imported(obj))
+		return NULL;
+	attach = obj->import_attach;
+	for (i = 0; i < EPD_NMAP; i++) {
+		if (p->fbmap[i].obj == obj)
+			m = &p->fbmap[i];
+		if (p->fbmap[i].used < lru->used)
+			lru = &p->fbmap[i];
+	}
+	if (!m) {
+		struct sg_page_iter it;
+		struct sg_table *sgt;
+		void *vaddr = NULL;
+		size_t k = 0;
+
+		if (n > EPD_MAP_PAGES)
+			return NULL;
+		sgt = dma_buf_map_attachment_unlocked(attach, DMA_FROM_DEVICE);
+		if (IS_ERR(sgt))
+			return NULL;
+		if (epd_sgt_direct(attach->dev, sgt)) {
+			for_each_sgtable_page(sgt, &it, 0) {
+				if (k < n)
+					p->fbmap_pages[k] = sg_page_iter_page(&it);
+				k++;
+			}
+			if (k == n)
+				vaddr = vmap(p->fbmap_pages, n, VM_MAP, PAGE_KERNEL);
+		}
+		if (!vaddr) {
+			dma_buf_unmap_attachment_unlocked(attach, sgt, DMA_FROM_DEVICE);
+			return NULL;
+		}
+		epd_fbmap_drop(lru);
+		drm_gem_object_get(obj);
+		lru->obj = obj;
+		lru->sgt = sgt;
+		lru->vaddr = vaddr;
+		m = lru;
+	}
+	m->used = ++p->fbmap_seq;
+	dma_sync_sgtable_for_cpu(attach->dev, m->sgt, DMA_FROM_DEVICE);
+	return m->vaddr + fb->offsets[0];
 }
 
 static void epd_submit(struct onyx_epd *p, const struct epd_request *r, const u8 *rgba, u32 pitch, bool bgr)
@@ -719,7 +814,7 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 	struct drm_plane_state *old = drm_atomic_get_old_plane_state(state, plane);
 	struct onyx_plane_state *s = to_onyx_plane_state(ps);
 	struct drm_framebuffer *fb = ps->fb;
-	const u8 *vaddr;
+	const u8 *vaddr, *fast;
 	int idx;
 
 	if (!fb || !ps->visible || drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE))
@@ -729,6 +824,11 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 	vaddr = s->base.data[0].vaddr;
 	epd_link_hint(p);
 	mutex_lock(&p->in_lock);
+	fast = epd_fb_cached(p, fb);
+	if (fast) {
+		vaddr = fast;
+		p->ui_cached++;
+	}
 	if (s->updates) {
 		const struct onyx_epdc_upd *u = s->updates->data;
 		size_t i, n = min_t(size_t, s->updates->length / sizeof(*u), 8);
@@ -936,13 +1036,13 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 	struct onyx_epd *p = dev_get_drvdata(dev);
 
 	return sysfs_emit(buf, "waveform %s, output %s, powered %d, frames %llu, swap_rg %d\n"
-			  "ui %s: commits %llu, updates %llu, passes %llu, diff %u us (max %u)\n"
+			  "ui %s: commits %llu, updates %llu, passes %llu, diff %u us (max %u), cached %llu\n"
 			  "us last/avg/max (cpu %d): tick %u/%u/%u, copy %u/%u/%u, commit %u/%u/%u\n"
 			  "  link up %u/%u/%u, power up %u/%u/%u, first frame %u/%u/%u\n",
 			  p->eng ? "loaded" : "missing", p->client_ok ? "ready" : "waiting",
 			  p->powered, p->frames, swap_rg,
 			  !p->ui_ok ? "unavailable" : ui ? epd_ui_mode_name(p->ui_cfg.mode) : "off",
-			  p->ui_frames, p->ui_updates, p->ui_passes, p->ui_us_last, p->ui_us_max,
+			  p->ui_frames, p->ui_updates, p->ui_passes, p->ui_us_last, p->ui_us_max, p->ui_cached,
 			  p->tick_cpu, EPD_ST(p->st_tick), EPD_ST(p->st_copy), EPD_ST(p->st_commit),
 			  EPD_ST(p->st_link), EPD_ST(p->st_power), EPD_ST(p->st_first));
 }
@@ -1079,8 +1179,11 @@ static int epd_resend(struct onyx_epd *p, const struct epd_request *r)
 	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
 	if (!ret) {
 		mutex_lock(&p->in_lock);
-		if (r)
-			epd_submit(p, r, data[0].vaddr, fb->pitches[0], epd_fb_bgr(fb));
+		if (r) {
+			const u8 *fast = epd_fb_cached(p, fb);
+
+			epd_submit(p, r, fast ? fast : data[0].vaddr, fb->pitches[0], epd_fb_bgr(fb));
+		}
 		mutex_unlock(&p->in_lock);
 		wake_up(&p->wq);
 		drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
@@ -1180,6 +1283,17 @@ static void epd_vfree(void *data)
 	vfree(data);
 }
 
+static void epd_fbmap_free(void *data)
+{
+	struct onyx_epd *p = data;
+	int i;
+
+	mutex_lock(&p->in_lock);
+	for (i = 0; i < EPD_NMAP; i++)
+		epd_fbmap_drop(&p->fbmap[i]);
+	mutex_unlock(&p->in_lock);
+}
+
 static void epd_node_put(void *data)
 {
 	of_node_put(data);
@@ -1212,6 +1326,9 @@ static int onyx_epd_probe(struct platform_device *pdev)
 	struct onyx_epd *p;
 	int ret;
 
+	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	if (ret)
+		return ret;
 	p = devm_drm_dev_alloc(dev, &epd_drm_driver, struct onyx_epd, drm);
 	if (IS_ERR(p))
 		return PTR_ERR(p);
@@ -1255,8 +1372,12 @@ static int onyx_epd_probe(struct platform_device *pdev)
 	p->grey = devm_kzalloc(dev, EPD_W * EPD_H, GFP_KERNEL);
 	p->grey_in = devm_kzalloc(dev, EPD_W * EPD_H, GFP_KERNEL);
 	p->err = devm_kcalloc(dev, 3 * EPD_W + 12, sizeof(*p->err), GFP_KERNEL);
-	if (!p->grey || !p->grey_in || !p->err)
+	p->fbmap_pages = devm_kcalloc(dev, EPD_MAP_PAGES, sizeof(*p->fbmap_pages), GFP_KERNEL);
+	if (!p->grey || !p->grey_in || !p->err || !p->fbmap_pages)
 		return -ENOMEM;
+	ret = devm_add_action_or_reset(dev, epd_fbmap_free, p);
+	if (ret)
+		return ret;
 	p->frame = vzalloc(epd_frame_words(t) * 4);
 	if (!p->frame)
 		return -ENOMEM;
@@ -1383,5 +1504,6 @@ static struct platform_driver onyx_epd_driver = {
 };
 module_platform_driver(onyx_epd_driver);
 
+MODULE_IMPORT_NS("DMA_BUF");
 MODULE_DESCRIPTION("Onyx Boox Go 7 e-ink display");
 MODULE_LICENSE("GPL");
