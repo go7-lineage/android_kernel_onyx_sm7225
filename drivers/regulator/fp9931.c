@@ -497,6 +497,7 @@ static int fp9931_probe(struct i2c_client *client)
 }
 
 static const struct dev_pm_ops fp9931_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
 	SET_RUNTIME_PM_OPS(fp9931_runtime_suspend, fp9931_runtime_resume, NULL)
 };
 
