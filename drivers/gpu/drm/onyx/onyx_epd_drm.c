@@ -88,11 +88,13 @@ struct onyx_epd {
 	struct drm_property *updates_prop;
 
 	struct mutex lock;
+	struct mutex in_lock;
 	struct epd_engine *eng;
 	const struct firmware *fw;
 	struct epd_policy pol;
 	struct epd_queue q;
 	u8 *grey;
+	u8 *grey_in;
 	int *err;
 	u32 cut;
 
@@ -294,12 +296,18 @@ static bool epd_upd_to_req(const struct onyx_epdc_upd *u, struct epd_request *r)
 static void epd_submit(struct onyx_epd *p, const struct epd_request *r, const u8 *rgba, u32 pitch, bool bgr)
 {
 	struct epd_decision d;
+	u32 y;
 
+	epd_convert_update(rgba, pitch, p->grey_in, EPD_W, r->left, r->top, r->width, r->height,
+			   r->flags | (y1_ordered ? EPD_CONV_Y1_ORDERED : 0), false, bgr, NULL, p->err);
+	mutex_lock(&p->lock);
 	epd_policy_apply(&p->pol, r, &d);
-	epd_convert_update(rgba, pitch, p->grey, EPD_W, r->left, r->top, r->width, r->height,
-			   d.flags | (y1_ordered ? EPD_CONV_Y1_ORDERED : 0), false, bgr, NULL, p->err);
+	for (y = r->top; y < (u32)r->top + r->height; y++)
+		memcpy(p->grey + (size_t)y * EPD_W + r->left, p->grey_in + (size_t)y * EPD_W + r->left,
+		       r->width);
 	epd_queue_push(&p->q, &d);
 	p->kick = true;
+	mutex_unlock(&p->lock);
 }
 
 static void epd_request(struct onyx_epd *p, const struct onyx_epdc_upd *u, const u8 *rgba, u32 pitch,
@@ -719,7 +727,7 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 		goto out;
 	vaddr = s->base.data[0].vaddr;
 	epd_link_hint(p);
-	mutex_lock(&p->lock);
+	mutex_lock(&p->in_lock);
 	if (s->updates) {
 		const struct onyx_epdc_upd *u = s->updates->data;
 		size_t i, n = min_t(size_t, s->updates->length / sizeof(*u), 8);
@@ -742,8 +750,11 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 		p->ui_frames++;
 		if (n) {
 			p->ui_updates++;
-			if (cut >= 0)
+			if (cut >= 0) {
+				mutex_lock(&p->lock);
 				epd_set_cut(p, cut);
+				mutex_unlock(&p->lock);
+			}
 			epd_submit(p, &r, vaddr, fb->pitches[0], epd_fb_bgr(fb));
 			mod_delayed_work(system_unbound_wq, &p->ui_work, 0);
 		}
@@ -761,7 +772,7 @@ static void epd_plane_atomic_update(struct drm_plane *plane, struct drm_atomic_s
 			epd_request(p, &u, vaddr, fb->pitches[0], epd_fb_bgr(fb));
 		}
 	}
-	mutex_unlock(&p->lock);
+	mutex_unlock(&p->in_lock);
 	wake_up(&p->wq);
 	drm_dev_exit(idx);
 out:
@@ -950,9 +961,9 @@ static ssize_t ui_mode_store(struct device *dev, struct device_attribute *attr, 
 	char name[16];
 
 	strscpy(name, buf, sizeof(name));
-	mutex_lock(&p->lock);
+	mutex_lock(&p->in_lock);
 	p->ui_cfg.mode = epd_ui_mode_by_name(strim(name));
-	mutex_unlock(&p->lock);
+	mutex_unlock(&p->in_lock);
 	return count;
 }
 static DEVICE_ATTR_RW(ui_mode);
@@ -972,9 +983,9 @@ static ssize_t name##_store(struct device *dev, struct device_attribute *attr,		
 												\
 	if (ret)										\
 		return ret;									\
-	mutex_lock(&p->lock);									\
+	mutex_lock(&p->in_lock);								\
 	p->ui_cfg.field = v;									\
-	mutex_unlock(&p->lock);									\
+	mutex_unlock(&p->in_lock);								\
 	return count;										\
 }												\
 static DEVICE_ATTR_RW(name)
@@ -1019,9 +1030,9 @@ static ssize_t test_pattern_store(struct device *dev, struct device_attribute *a
 			}
 			img[y * EPD_W + x] = 0xff000000u | g << 16 | g << 8 | g;
 		}
-	mutex_lock(&p->lock);
+	mutex_lock(&p->in_lock);
 	epd_request(p, &u, (const u8 *)img, EPD_W * 4, false);
-	mutex_unlock(&p->lock);
+	mutex_unlock(&p->in_lock);
 	wake_up(&p->wq);
 	vfree(img);
 	return count;
@@ -1066,10 +1077,10 @@ static int epd_resend(struct onyx_epd *p, const struct epd_request *r)
 		goto put;
 	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
 	if (!ret) {
-		mutex_lock(&p->lock);
+		mutex_lock(&p->in_lock);
 		if (r)
 			epd_submit(p, r, data[0].vaddr, fb->pitches[0], epd_fb_bgr(fb));
-		mutex_unlock(&p->lock);
+		mutex_unlock(&p->in_lock);
 		wake_up(&p->wq);
 		drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
 	}
@@ -1102,9 +1113,9 @@ static void epd_ui_work(struct work_struct *work)
 	enum epd_ui_step st;
 	u64 wait = 0;
 
-	mutex_lock(&p->lock);
+	mutex_lock(&p->in_lock);
 	st = epd_ui_step(&p->ui, epd_now_ms(), &r, &wait);
-	mutex_unlock(&p->lock);
+	mutex_unlock(&p->in_lock);
 	if (st == EPD_UI_WAIT)
 		mod_delayed_work(system_unbound_wq, &p->ui_work, msecs_to_jiffies(wait));
 	else if (st == EPD_UI_SEND && !epd_resend(p, &r))
@@ -1205,6 +1216,7 @@ static int onyx_epd_probe(struct platform_device *pdev)
 		return PTR_ERR(p);
 	platform_set_drvdata(pdev, p);
 	mutex_init(&p->lock);
+	mutex_init(&p->in_lock);
 	mutex_init(&p->link_lock);
 	init_waitqueue_head(&p->wq);
 	init_waitqueue_head(&p->out_wq);
@@ -1239,8 +1251,9 @@ static int onyx_epd_probe(struct platform_device *pdev)
 	epd_set_vcom(p);
 
 	p->grey = devm_kzalloc(dev, EPD_W * EPD_H, GFP_KERNEL);
+	p->grey_in = devm_kzalloc(dev, EPD_W * EPD_H, GFP_KERNEL);
 	p->err = devm_kcalloc(dev, 3 * EPD_W + 12, sizeof(*p->err), GFP_KERNEL);
-	if (!p->grey || !p->err)
+	if (!p->grey || !p->grey_in || !p->err)
 		return -ENOMEM;
 	p->frame = vzalloc(epd_frame_words(t) * 4);
 	if (!p->frame)
@@ -1249,6 +1262,7 @@ static int onyx_epd_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	memset(p->grey, 0xff, EPD_W * EPD_H);
+	memset(p->grey_in, 0xff, EPD_W * EPD_H);
 	epd_frame_template(t, p->frame);
 	p->tmpl = vzalloc(epd_frame_words(t) * 4);
 	if (!p->tmpl)
