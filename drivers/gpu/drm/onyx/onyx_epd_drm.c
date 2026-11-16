@@ -587,6 +587,7 @@ static void epd_setup_work(struct work_struct *w)
 		.marker_done = epd_marker_done,
 		.ctx = p,
 		.regal_aa = true,
+		.supersede = true,
 	};
 	int ret;
 
@@ -1230,6 +1231,7 @@ static int onyx_epd_probe(struct platform_device *pdev)
 	p->cut = 3;
 	epd_policy_init(&p->pol, true);
 	epd_queue_init(&p->q);
+	p->q.merge = true;
 
 	p->dsi_np = of_parse_phandle(dev->of_node, "onyx,dsi", 0);
 	if (!p->dsi_np)

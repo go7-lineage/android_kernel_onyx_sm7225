@@ -337,6 +337,39 @@ static int merge(struct epd_engine *e, struct epd_req *r)
 	return 0;
 }
 
+static void supersede(struct epd_engine *e, const struct epd_update *u)
+{
+	u32 ux1 = (u32)u->left + u->width, uy1 = (u32)u->top + u->height;
+	struct epd_req **pp, *w;
+
+	for (pp = &e->wait_head; (w = *pp);) {
+		const struct epd_update *o = &w->upd;
+		u32 wx0 = (u32)o->left + w->x0, wx1 = (u32)o->left + w->x1;
+		u32 wy0 = (u32)o->top + w->y0, wy1 = (u32)o->top + w->y1;
+		u32 x0 = wx0 > u->left ? wx0 : u->left, x1 = wx1 < ux1 ? wx1 : ux1;
+		u32 y0 = wy0 > u->top ? wy0 : u->top, y1 = wy1 < uy1 ? wy1 : uy1;
+		u32 y;
+
+		if (o->mode != u->mode || o->full != u->full || x0 >= x1 || y0 >= y1) {
+			pp = &w->next;
+			continue;
+		}
+		if (x0 == wx0 && x1 == wx1 && y0 == wy0 && y1 == wy1) {
+			u32 marker = o->marker;
+
+			*pp = w->next;
+			if (!*pp)
+				e->wait_tail = pp;
+			req_free(w);
+			marker_complete(e, marker);
+			continue;
+		}
+		for (y = y0; y < y1; y++)
+			memset(w->mask + (size_t)(y - o->top) * o->width + (x0 - o->left), 0, x1 - x0);
+		pp = &w->next;
+	}
+}
+
 int epd_engine_submit(struct epd_engine *e, const struct epd_update *u, const u8 *grey8,
 		      size_t stride)
 {
@@ -371,6 +404,8 @@ int epd_engine_submit(struct epd_engine *e, const struct epd_update *u, const u8
 	memset(r->mask, 1, n);
 	r->y1 = u->height;
 	r->x1 = u->width;
+	if (e->cfg.supersede)
+		supersede(e, u);
 	return merge(e, r);
 }
 
