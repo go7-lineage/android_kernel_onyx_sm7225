@@ -62,16 +62,22 @@ void epd_queue_init(struct epd_queue *q)
 	memset(q, 0, sizeof(*q));
 }
 
+static bool queue_same_kind(const struct epd_decision *t, const struct epd_decision *d)
+{
+	return !d->barrier && t->upd.mode == d->upd.mode && t->upd.full == d->upd.full && t->flags == d->flags &&
+	       t->upd.left < d->upd.left + d->upd.width && d->upd.left < t->upd.left + t->upd.width &&
+	       t->upd.top < d->upd.top + d->upd.height && d->upd.top < t->upd.top + t->upd.height;
+}
+
 void epd_queue_push(struct epd_queue *q, const struct epd_decision *d)
 {
-	struct epd_decision *t;
+	struct epd_decision *t = &q->q[(q->head + q->n + EPD_QMAX - 1) % EPD_QMAX];
 	u32 r, b;
 
-	if (q->n < EPD_QMAX) {
+	if (q->n < EPD_QMAX && !(q->merge && q->n && queue_same_kind(t, d))) {
 		q->q[(q->head + q->n++) % EPD_QMAX] = *d;
 		return;
 	}
-	t = &q->q[(q->head + q->n - 1) % EPD_QMAX];
 	r = t->upd.left + t->upd.width > d->upd.left + d->upd.width ?
 		t->upd.left + t->upd.width : d->upd.left + d->upd.width;
 	b = t->upd.top + t->upd.height > d->upd.top + d->upd.height ?

@@ -106,6 +106,7 @@ struct epd_engine_cfg {
 	void (*marker_done)(void *ctx, u32 marker);
 	void *ctx;
 	bool regal_aa;
+	bool supersede;
 };
 
 struct epd_engine;
@@ -164,6 +165,7 @@ struct epd_queue {
 	struct epd_decision q[EPD_QMAX];
 	int head, n;
 	u32 coalesced;
+	bool merge;
 };
 
 void epd_policy_init(struct epd_policy *p, bool du_a2_clean);
