@@ -424,6 +424,17 @@ config BACKLIGHT_MP3309C
 	  To compile this driver as a module, choose M here: the module will
 	  be called mp3309c.
 
+config BACKLIGHT_ONYX_GO7_FRONTLIGHT
+	tristate "Onyx Boox Go 7 frontlight"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  Frontlight of Onyx Boox Go 7 e-reader, LM3630A that drives white
+	  and warm LEDs. It appears as one backlight device with a warmth setting,
+	  using the calibration tables of the stock firmware.
+
+	  If you have this device, say Y.
+
 config BACKLIGHT_PANDORA
 	tristate "Backlight driver for Pandora console"
 	depends on TWL4030_CORE

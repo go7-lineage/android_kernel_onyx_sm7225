@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/leds/backlight/onyx,go7-frontlight.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Onyx Boox Go 7 frontlight
+
+maintainers:
+  - ui-1 <134524800+ui-1@users.noreply.github.com>
+
+description:
+  TI LM3630A with the white LEDs on bank A and warm LEDs on bank B
+
+properties:
+  compatible:
+    const: onyx,go7-frontlight
+
+  reg:
+    maxItems: 1
+
+  enable-gpios:
+    description: HWEN pin of the LM3630A.
+    maxItems: 1
+
+  vdd-supply:
+    description: Supply of the LM3630A and its boost converter.
+
+  vddio-supply:
+    description: Supply of the I2C bus pull-ups.
+
+required:
+  - compatible
+  - reg
+  - enable-gpios
+  - vdd-supply
+  - vddio-supply
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        led-controller@38 {
+            compatible = "onyx,go7-frontlight";
+            reg = <0x38>;
+            enable-gpios = <&tlmm 73 GPIO_ACTIVE_HIGH>;
+            vdd-supply = <&vreg_vsys>;
+            vddio-supply = <&vreg_l5a>;
+        };
+    };
