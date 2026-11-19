@@ -895,35 +895,9 @@ static const struct power_supply_desc smb_psy_desc = {
 /* Init sequence derived from vendor downstream driver */
 static const struct smb_init_register smb5_init_seq[] = {
 	{ .addr = USBIN_CMD_IL, .mask = USBIN_SUSPEND_BIT, .val = 0 },
-	/*
-	 * By default configure us as an upstream facing port
-	 * FIXME: This will be handled by the type-c driver
-	 */
-	{ .addr = SMB5_TYPE_C_MODE_CFG,
-	  .mask = SMB5_EN_TRY_SNK_BIT | SMB5_EN_SNK_ONLY_BIT,
-	  .val = SMB5_EN_TRY_SNK_BIT },
-	{ .addr = SMB5_TYPEC_TYPE_C_VCONN_CONTROL,
-	  .mask = SMB5_VCONN_EN_ORIENTATION_BIT | SMB5_VCONN_EN_SRC_BIT |
-		  SMB5_VCONN_EN_VALUE_BIT,
-	  .val = SMB2_VCONN_EN_SRC_BIT },
-	{ .addr = SMB5_DEBUG_ACCESS_SRC_CFG,
-	  .mask = SMB5_EN_UNORIENTED_DEBUG_ACCESS_SRC_BIT,
-	  .val = SMB5_EN_UNORIENTED_DEBUG_ACCESS_SRC_BIT },
-	{ .addr = SMB5_TYPE_C_EXIT_STATE_CFG,
-	  .mask = SMB5_SEL_SRC_UPPER_REF_BIT,
-	  .val = SMB5_SEL_SRC_UPPER_REF_BIT },
-	/*
-	 * Disable Type-C factory mode and stay in Attached.SRC state when VCONN
-	 * over-current happens
-	 */
 	{ .addr = TYPE_C_CFG,
 	  .mask = APSD_START_ON_CC_BIT,
 	  .val = 0 },
-	{ .addr = SMB5_TYPE_C_DEBUG_ACCESS_SINK,
-	  .mask = SMB5_TYPEC_DEBUG_ACCESS_SINK_MASK,
-	  .val = 0x17 },
-	/* Configure VBUS for software control */
-	{ .addr = OTG_CFG, .mask = OTG_EN_SRC_CFG_BIT, .val = 0 },
 	/*
 	 * Recharge when State Of Charge drops below 98%.
 	 */
