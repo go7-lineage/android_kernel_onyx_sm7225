@@ -203,6 +203,8 @@ enum smb_generation {
 #define DCP_CURRENT_UA					1500000
 #define CURRENT_MAX_UA					DCP_CURRENT_UA
 
+#define LIMIT_POLL_MS					30000
+
 #define SMB2_FLOAT_VOLTAGE_MIN_UV			3487500
 #define SMB2_FLOAT_VOLTAGE_MAX_UV			4920000
 #define SMB2_FLOAT_VOLTAGE_STEP_UV			7500
@@ -273,10 +275,8 @@ struct smb_chip {
 
 	struct mutex limit_lock;
 	int limit_start, limit_end;
-	int batt_capacity;
 	bool limit_stopped;
-	struct notifier_block psy_nb;
-	struct work_struct limit_work;
+	struct delayed_work limit_work;
 };
 
 struct smb_match_data {
@@ -675,22 +675,39 @@ static int smb_get_prop_health(struct smb_chip *chip, int *val)
 	return -EINVAL;
 }
 
+static int smb_batt_capacity(struct power_supply *psy, void *data)
+{
+	union power_supply_propval val;
+
+	if (psy->desc->type != POWER_SUPPLY_TYPE_BATTERY ||
+	    power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &val))
+		return 0;
+
+	*(int *)data = val.intval;
+	return 1;
+}
+
 /*
  * Stop charging once the battery reaches limit_end and resume at limit_start or below.
+ * The capacity is read here, every LIMIT_POLL_MS while a limit is set and the input is
+ * connected, and the system is kept awake as long as the battery charges towards the limit.
  */
 static void smb_limit_work(struct work_struct *work)
 {
-	struct smb_chip *chip = container_of(work, struct smb_chip, limit_work);
-	bool stop;
-	int rc;
+	struct smb_chip *chip = container_of(to_delayed_work(work), struct smb_chip, limit_work);
+	int capacity = -1, online = 0, rc;
+	bool stop, changed = false, poll;
+
+	smb_get_prop_usb_online(chip, &online);
+	power_supply_for_each_psy(&capacity, smb_batt_capacity);
 
 	mutex_lock(&chip->limit_lock);
 	stop = chip->limit_stopped;
-	if (chip->limit_end >= 100 || chip->batt_capacity < 0)
+	if (chip->limit_end >= 100 || capacity < 0)
 		stop = false;
-	else if (chip->batt_capacity >= chip->limit_end)
+	else if (capacity >= chip->limit_end)
 		stop = true;
-	else if (chip->batt_capacity <= chip->limit_start)
+	else if (capacity <= chip->limit_start)
 		stop = false;
 	if (stop != chip->limit_stopped) {
 		rc = regmap_update_bits(chip->regmap, chip->base + CHARGING_ENABLE_CMD,
@@ -699,29 +716,22 @@ static void smb_limit_work(struct work_struct *work)
 			dev_err(chip->dev, "Couldn't %s charging: %d\n", stop ? "stop" : "resume", rc);
 		} else {
 			chip->limit_stopped = stop;
+			changed = true;
 			dev_info(chip->dev, "charging %s at %d%%\n", stop ? "stopped" : "resumed",
-				 chip->batt_capacity);
+				 capacity);
 		}
 	}
+	poll = online && chip->limit_end < 100;
+	if (poll && !chip->limit_stopped)
+		pm_stay_awake(chip->dev);
+	else
+		pm_relax(chip->dev);
 	mutex_unlock(&chip->limit_lock);
-	power_supply_changed(chip->chg_psy);
-}
 
-static int smb_psy_notifier(struct notifier_block *nb, unsigned long event, void *data)
-{
-	struct smb_chip *chip = container_of(nb, struct smb_chip, psy_nb);
-	struct power_supply *psy = data;
-	union power_supply_propval val;
-
-	if (event != PSY_EVENT_PROP_CHANGED || psy->desc->type != POWER_SUPPLY_TYPE_BATTERY)
-		return NOTIFY_DONE;
-	if (power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &val))
-		return NOTIFY_DONE;
-	if (READ_ONCE(chip->batt_capacity) != val.intval) {
-		WRITE_ONCE(chip->batt_capacity, val.intval);
-		schedule_work(&chip->limit_work);
-	}
-	return NOTIFY_OK;
+	if (changed)
+		power_supply_changed(chip->chg_psy);
+	if (poll)
+		schedule_delayed_work(&chip->limit_work, msecs_to_jiffies(LIMIT_POLL_MS));
 }
 
 static int smb_set_limit(struct smb_chip *chip, bool end, int val)
@@ -742,7 +752,7 @@ static int smb_set_limit(struct smb_chip *chip, bool end, int val)
 			chip->limit_end = val + 1;
 	}
 	mutex_unlock(&chip->limit_lock);
-	schedule_work(&chip->limit_work);
+	mod_delayed_work(system_wq, &chip->limit_work, 0);
 	return 0;
 }
 
@@ -857,6 +867,7 @@ static irqreturn_t smb_handle_usb_plugin(int irq, void *data)
 
 	schedule_delayed_work(&chip->status_change_work,
 			      msecs_to_jiffies(1500));
+	mod_delayed_work(system_wq, &chip->limit_work, 0);
 
 	return IRQ_HANDLED;
 }
@@ -1137,13 +1148,6 @@ static int smb_init_irq(struct smb_chip *chip, int *irq, const char *name,
 	return 0;
 }
 
-static void smb_unreg_notifier(void *data)
-{
-	struct smb_chip *chip = data;
-
-	power_supply_unreg_notifier(&chip->psy_nb);
-}
-
 static int smb_probe(struct platform_device *pdev)
 {
 	struct power_supply_config supply_config = {};
@@ -1164,7 +1168,6 @@ static int smb_probe(struct platform_device *pdev)
 	chip->name = pdev->name;
 	chip->limit_start = 100;
 	chip->limit_end = 100;
-	chip->batt_capacity = -1;
 	mutex_init(&chip->limit_lock);
 
 	chip->regmap = dev_get_regmap(pdev->dev.parent, NULL);
@@ -1224,6 +1227,10 @@ static int smb_probe(struct platform_device *pdev)
 			       match_data->name);
 	if (!desc->name)
 		return -ENOMEM;
+
+	rc = devm_delayed_work_autocancel(chip->dev, &chip->limit_work, smb_limit_work);
+	if (rc)
+		return rc;
 
 	chip->chg_psy =
 		devm_power_supply_register(chip->dev, desc, &supply_config);
@@ -1325,23 +1332,20 @@ skip_float_voltage:
 		return dev_err_probe(chip->dev, rc,
 				     "Couldn't write fast AICL rerun time");
 
-	rc = devm_work_autocancel(chip->dev, &chip->limit_work, smb_limit_work);
-	if (rc)
-		return rc;
-	chip->psy_nb.notifier_call = smb_psy_notifier;
-	rc = power_supply_reg_notifier(&chip->psy_nb);
-	if (rc)
-		return rc;
-	rc = devm_add_action_or_reset(chip->dev, smb_unreg_notifier, chip);
-	if (rc)
-		return rc;
-
 	devm_remove_action(chip->dev, smb_restore_charge_enable, chip);
 
 	/* Initialise charger state */
 	schedule_delayed_work(&chip->status_change_work, 0);
 
 	return 0;
+}
+
+static void smb_shutdown(struct platform_device *pdev)
+{
+	struct smb_chip *chip = platform_get_drvdata(pdev);
+
+	smb_set_limit(chip, true, 100);
+	flush_delayed_work(&chip->limit_work);
 }
 
 static const struct of_device_id smb_match_id_table[] = {
@@ -1355,6 +1359,7 @@ MODULE_DEVICE_TABLE(of, smb_match_id_table);
 
 static struct platform_driver qcom_spmi_smb = {
 	.probe = smb_probe,
+	.shutdown = smb_shutdown,
 	.driver = {
 		.name = "qcom-smbx-charger",
 		.of_match_table = smb_match_id_table,
