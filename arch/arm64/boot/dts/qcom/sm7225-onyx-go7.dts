@@ -597,27 +597,11 @@
 	};
 
 	led-controller@38 {
-		compatible = "ti,lm3630a";
+		compatible = "onyx,go7-frontlight";
 		reg = <0x38>;
 		enable-gpios = <&tlmm 73 GPIO_ACTIVE_HIGH>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		led@0 {
-			reg = <0>;
-			led-sources = <0>;
-			label = "frontlight-white";
-			default-brightness = <0>;
-			max-brightness = <255>;
-		};
-
-		led@1 {
-			reg = <1>;
-			led-sources = <1>;
-			label = "frontlight-warm";
-			default-brightness = <0>;
-			max-brightness = <255>;
-		};
+		vdd-supply = <&vreg_vsys>;
+		vddio-supply = <&vreg_l5a>;
 	};
 
 	typec-mux@42 {
