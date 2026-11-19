@@ -695,11 +695,12 @@
 
 &pm7250b_charger {
 	monitored-battery = <&battery>;
-	status = "disabled";
+	status = "okay";
 };
 
 &pm7250b_qgauge {
 	monitored-battery = <&battery>;
+	power-supplies = <&pm7250b_charger>;
 	io-channels = <&bat_therm_sensor>,
 		      <&pm7250b_adc ADC5_BAT_ID_100K_PU>;
 	status = "okay";
