@@ -222,6 +222,11 @@ enum charger_status {
 	DISABLE_CHARGE,
 };
 
+static const u8 smb5_charger_status[] = {
+	INHIBIT_CHARGE, TRICKLE_CHARGE, PRE_CHARGE, FULLON_CHARGE,
+	TAPER_CHARGE, TERMINATE_CHARGE, DISABLE_CHARGE, DISABLE_CHARGE,
+};
+
 struct smb_init_register {
 	u16 addr;
 	u8 mask;
@@ -381,7 +386,7 @@ static int smbx_ov_status(struct smb_chip *chip)
 		mask = SMB2_CHARGER_ERROR_STATUS_BAT_OV_BIT;
 		break;
 	case SMB5:
-		reg = BATTERY_CHARGER_STATUS_7;
+		reg = BATTERY_CHARGER_STATUS_2;
 		mask = SMB5_CHARGER_ERROR_STATUS_BAT_OV_BIT;
 		break;
 	}
@@ -390,7 +395,7 @@ static int smbx_ov_status(struct smb_chip *chip)
 	if (rc)
 		return rc;
 
-	return !!(reg & mask);
+	return !!(val & mask);
 }
 
 static int smb_get_prop_status(struct smb_chip *chip, int *val)
@@ -424,6 +429,8 @@ static int smb_get_prop_status(struct smb_chip *chip, int *val)
 	}
 
 	stat = stat & BATTERY_CHARGER_STATUS_MASK;
+	if (chip->gen == SMB5)
+		stat = smb5_charger_status[stat];
 
 	switch (stat) {
 	case TRICKLE_CHARGE:
