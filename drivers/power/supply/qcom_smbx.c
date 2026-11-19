@@ -202,6 +202,10 @@ enum smb_generation {
 #define CDP_CURRENT_UA					1500000
 #define DCP_CURRENT_UA					1500000
 #define CURRENT_MAX_UA					DCP_CURRENT_UA
+
+#define SMB5_FLOAT_VOLTAGE_MIN_UV			3600000
+#define SMB5_FLOAT_VOLTAGE_MAX_UV			4790000
+#define SMB5_FLOAT_VOLTAGE_STEP_UV			10000
 /* clang-format on */
 
 enum charger_status {
@@ -1143,7 +1147,7 @@ static int smb_probe(struct platform_device *pdev)
 	struct smb_chip *chip;
 	const struct smb_match_data *match_data;
 	unsigned int fcc_ua = 1950000;
-	int rc, irq;
+	int rc, irq, fv_uv;
 
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -1223,7 +1227,16 @@ static int smb_probe(struct platform_device *pdev)
 		return dev_err_probe(chip->dev, rc,
 				     "Failed to init status change work\n");
 
-	rc = (chip->batt_info->voltage_max_design_uv - 3487500) / 7500 + 1;
+	fv_uv = chip->batt_info->voltage_max_design_uv;
+	if (chip->gen == SMB5) {
+		if (fv_uv < SMB5_FLOAT_VOLTAGE_MIN_UV || fv_uv > SMB5_FLOAT_VOLTAGE_MAX_UV)
+			return dev_err_probe(chip->dev, -EINVAL,
+					     "float voltage %d uV outside %d-%d uV\n", fv_uv,
+					     SMB5_FLOAT_VOLTAGE_MIN_UV, SMB5_FLOAT_VOLTAGE_MAX_UV);
+		rc = (fv_uv - SMB5_FLOAT_VOLTAGE_MIN_UV) / SMB5_FLOAT_VOLTAGE_STEP_UV;
+	} else {
+		rc = (fv_uv - 3487500) / 7500 + 1;
+	}
 	rc = regmap_update_bits(chip->regmap, chip->base + FLOAT_VOLTAGE_CFG,
 				FLOAT_VOLTAGE_SETTING_MASK, rc);
 	if (rc < 0)
