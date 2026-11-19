@@ -100,8 +100,6 @@
 		qcom,tx-device = <&wcd937x_tx>;
 
 		#sound-dai-cells = <1>;
-
-		status = "disabled";
 	};
 
 	gpio-keys {
@@ -593,7 +591,6 @@
 		#sound-dai-cells = <0>;
 		awinic,audio-channel = <0>;
 		sound-name-prefix = "Speaker";
-		status = "disabled";
 	};
 
 	led-controller@38 {
@@ -740,6 +737,10 @@
 	status = "okay";
 };
 
+&rxmacro {
+	status = "okay";
+};
+
 &sdhc_1 {
 	vmmc-supply = <&vreg_l7e>;
 	vqmmc-supply = <&vreg_l12a>;
@@ -776,7 +777,6 @@
 &sound {
 	compatible = "onyx,go7-sndcard";
 	model = "Onyx Boox Go 7";
-	status = "disabled";
 
 	audio-routing = "IN1_HPHL", "HPHL_OUT",
 			"IN2_HPHR", "HPHR_OUT",
@@ -839,6 +839,8 @@
 };
 
 &swr1 {
+	status = "okay";
+
 	wcd937x_rx: codec@0,4 {
 		compatible = "sdw20217010a00";
 		reg = <0 4>;
@@ -847,6 +849,8 @@
 };
 
 &swr2 {
+	status = "okay";
+
 	wcd937x_tx: codec@0,3 {
 		compatible = "sdw20217010a00";
 		reg = <0 3>;
@@ -982,6 +986,10 @@
 	};
 };
 
+&txmacro {
+	status = "okay";
+};
+
 &uart1 {
 	status = "okay";
 
@@ -1032,6 +1040,10 @@
 	vdda-pll-supply = <&vreg_l2a>;
 	vdda-phy-dpdm-supply = <&vreg_l3a>;
 
+	status = "okay";
+};
+
+&vamacro {
 	status = "okay";
 };
 
