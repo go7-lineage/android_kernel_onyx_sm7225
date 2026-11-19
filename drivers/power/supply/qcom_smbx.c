@@ -206,6 +206,9 @@ enum smb_generation {
 #define SMB2_FLOAT_VOLTAGE_MIN_UV			3487500
 #define SMB2_FLOAT_VOLTAGE_MAX_UV			4920000
 #define SMB2_FLOAT_VOLTAGE_STEP_UV			7500
+#define SMB5_FLOAT_VOLTAGE_MIN_UV			3600000
+#define SMB5_FLOAT_VOLTAGE_MAX_UV			4790000
+#define SMB5_FLOAT_VOLTAGE_STEP_UV			10000
 /* clang-format on */
 
 enum charger_status {
@@ -1168,7 +1171,7 @@ static int smb_probe(struct platform_device *pdev)
 	const struct smb_match_data *match_data;
 	unsigned int charge_enable;
 	unsigned int float_voltage_sel;
-	int float_voltage_uv;
+	int float_voltage_uv, float_min_uv, float_max_uv, float_step_uv;
 	unsigned int fcc_ua = 1950000;
 	int rc, irq;
 
@@ -1274,17 +1277,22 @@ static int smb_probe(struct platform_device *pdev)
 		goto skip_float_voltage;
 	}
 
-	if (float_voltage_uv < SMB2_FLOAT_VOLTAGE_MIN_UV ||
-	    float_voltage_uv > SMB2_FLOAT_VOLTAGE_MAX_UV)
+	if (chip->gen == SMB5) {
+		float_min_uv = SMB5_FLOAT_VOLTAGE_MIN_UV;
+		float_max_uv = SMB5_FLOAT_VOLTAGE_MAX_UV;
+		float_step_uv = SMB5_FLOAT_VOLTAGE_STEP_UV;
+	} else {
+		float_min_uv = SMB2_FLOAT_VOLTAGE_MIN_UV;
+		float_max_uv = SMB2_FLOAT_VOLTAGE_MAX_UV;
+		float_step_uv = SMB2_FLOAT_VOLTAGE_STEP_UV;
+	}
+
+	if (float_voltage_uv < float_min_uv || float_voltage_uv > float_max_uv)
 		return dev_err_probe(chip->dev, -EINVAL,
 				     "float voltage %d uV outside %d-%d uV\n",
-				     float_voltage_uv,
-				     SMB2_FLOAT_VOLTAGE_MIN_UV,
-				     SMB2_FLOAT_VOLTAGE_MAX_UV);
+				     float_voltage_uv, float_min_uv, float_max_uv);
 
-	float_voltage_sel =
-		(float_voltage_uv - SMB2_FLOAT_VOLTAGE_MIN_UV) /
-		SMB2_FLOAT_VOLTAGE_STEP_UV;
+	float_voltage_sel = (float_voltage_uv - float_min_uv) / float_step_uv;
 	rc = regmap_update_bits(chip->regmap, chip->base + FLOAT_VOLTAGE_CFG,
 				FLOAT_VOLTAGE_SETTING_MASK, float_voltage_sel);
 	if (rc < 0)
