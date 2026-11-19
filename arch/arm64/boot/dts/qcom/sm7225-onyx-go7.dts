@@ -671,12 +671,6 @@
 		function = LED_FUNCTION_STATUS;
 	};
 
-	led@2 {
-		reg = <2>;
-		color = <LED_COLOR_ID_GREEN>;
-		function = LED_FUNCTION_STATUS;
-	};
-
 	led@3 {
 		reg = <3>;
 		color = <LED_COLOR_ID_BLUE>;
