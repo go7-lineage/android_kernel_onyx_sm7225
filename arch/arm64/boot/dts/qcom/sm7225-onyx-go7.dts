@@ -618,6 +618,40 @@
 	status = "disabled";
 };
 
+&lpass_tlmm {
+	dmic01_default: dmic01-default-state {
+		clk-pins {
+			pins = "gpio6";
+			function = "dmic1_clk";
+			drive-strength = <8>;
+			output-high;
+		};
+
+		data-pins {
+			pins = "gpio7";
+			function = "dmic1_data";
+			drive-strength = <8>;
+			input-enable;
+		};
+	};
+
+	dmic23_default: dmic23-default-state {
+		clk-pins {
+			pins = "gpio8";
+			function = "dmic2_clk";
+			drive-strength = <8>;
+			output-high;
+		};
+
+		data-pins {
+			pins = "gpio9";
+			function = "dmic2_data";
+			drive-strength = <8>;
+			input-enable;
+		};
+	};
+};
+
 &mdss {
 	status = "okay";
 };
@@ -799,7 +833,9 @@
 			"AMIC3", "MIC BIAS3",
 			"TX SWR_ADC0", "ADC1_OUTPUT",
 			"TX SWR_ADC2", "ADC2_OUTPUT",
-			"TX SWR_ADC3", "ADC3_OUTPUT";
+			"TX SWR_ADC3", "ADC3_OUTPUT",
+			"VA DMIC0", "MIC BIAS1",
+			"VA DMIC2", "MIC BIAS3";
 
 	mm1-dai-link {
 		link-name = "MultiMedia1";
@@ -842,6 +878,22 @@
 
 		cpu {
 			sound-dai = <&q6afedai TX_CODEC_DMA_TX_3>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+	};
+
+	va-dai-link {
+		link-name = "VA Capture";
+
+		codec {
+			sound-dai = <&vamacro 0>;
+		};
+
+		cpu {
+			sound-dai = <&q6afedai VA_CODEC_DMA_TX_0>;
 		};
 
 		platform {
@@ -1056,6 +1108,11 @@
 };
 
 &vamacro {
+	pinctrl-0 = <&dmic01_default>, <&dmic23_default>;
+	pinctrl-names = "default";
+
+	qcom,dmic-sample-rate = <2400000>;
+
 	status = "okay";
 };
 
