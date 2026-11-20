@@ -788,6 +788,8 @@
 	compatible = "onyx,go7-sndcard";
 	model = "Onyx Boox Go 7";
 
+	aux-devs = <&speaker_amp>;
+
 	audio-routing = "IN1_HPHL", "HPHL_OUT",
 			"IN2_HPHR", "HPHR_OUT",
 			"IN3_AUX", "AUX_OUT",
@@ -819,7 +821,7 @@
 		link-name = "WCD Playback";
 
 		codec {
-			sound-dai = <&wcd9370 0>, <&swr1 0>, <&rxmacro 0>, <&speaker_amp>;
+			sound-dai = <&wcd9370 0>, <&swr1 0>, <&rxmacro 0>;
 		};
 
 		cpu {
