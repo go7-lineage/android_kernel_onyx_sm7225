@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+fuse_mnt
+fusectl_test
+fuse_test
+fuse_bpf_android_test
+*.raw
