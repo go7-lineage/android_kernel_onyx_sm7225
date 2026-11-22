@@ -19,6 +19,8 @@
 #define QG_S2_NORMAL_AVG_I_DATA0_REG	0x82 /* 2-byte 0x82-0x83 */
 #define QG_LAST_ADC_V_DATA0_REG		0xc0 /* 2-byte 0xc0-0xc1 */
 #define QG_LAST_ADC_I_DATA0_REG		0xc2 /* 2-byte 0xc2-0xc3 */
+#define QG_PERPH_SUBTYPE_REG		0x05
+#define QG_SUBTYPE_IBAT_5A		0x03
 
 /* SRAM offsets */
 #define QG_SDAM_OCV_OFFSET		0x4c /* 4-byte 0x4c-0x4f */
@@ -28,6 +30,7 @@ struct qcom_qg_chip {
 	struct device *dev;
 	struct regmap *regmap;
 	unsigned int base;
+	unsigned int ibat_step_na;
 
 	struct iio_channel *batt_therm_chan;
 
@@ -50,7 +53,7 @@ static int qcom_qg_get_current(struct qcom_qg_chip *chip, u8 offset, int *val)
 	}
 
 	temp = (s16)(readval[1] << 8 | readval[0]);
-	*val = div_s64((s64)temp * 152588, 1000);
+	*val = div_s64((s64)temp * chip->ibat_step_na, 1000);
 
 	/*
 	 * PSY API expects charging batteries to report a positive current, which is inverted
@@ -214,6 +217,7 @@ static int qcom_qg_probe(struct platform_device *pdev)
 	struct qcom_qg_chip *chip;
 	struct power_supply_config psy_cfg = {};
 	int ret;
+	unsigned int subtype;
 
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -232,6 +236,11 @@ static int qcom_qg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return dev_err_probe(chip->dev, ret,
 				     "Couldn't read base address\n");
+
+	ret = regmap_read(chip->regmap, chip->base + QG_PERPH_SUBTYPE_REG, &subtype);
+	if (ret)
+		return dev_err_probe(chip->dev, ret, "Couldn't read subtype\n");
+	chip->ibat_step_na = subtype == QG_SUBTYPE_IBAT_5A ? 152588 : 305176;
 
 	/* ADC for thermal channel */
 	chip->batt_therm_chan = devm_iio_channel_get(chip->dev, "batt-therm");
