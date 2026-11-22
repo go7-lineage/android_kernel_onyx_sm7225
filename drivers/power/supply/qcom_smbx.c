@@ -156,6 +156,13 @@ enum smb_generation {
 #define SMB5_SRC_RD_RA_VCONN_BIT			BIT(2)
 #define SMB5_AUDIO_ACCESS_RA_RA_BIT			BIT(0)
 
+#define SMB5_TYPEC_SNK_STATUS_REG			0x506
+#define SMB5_SNK_RP_1P5_BIT				BIT(2)
+#define SMB5_SNK_RP_3P0_BIT				BIT(1)
+
+#define SMB5_TYPEC_LEGACY_CABLE_STATUS_REG		0x50d
+#define SMB5_TYPEC_LEGACY_CABLE_BIT			BIT(1)
+
 /* Bits 2:0 match PMI8998 TYPE_C_INTRPT_ENB_SOFTWARE_CTRL */
 #define SMB5_TYPE_C_MODE_CFG				0x544
 #define SMB5_EN_TRY_SNK_BIT				BIT(4)
@@ -202,6 +209,8 @@ enum smb_generation {
 #define CDP_CURRENT_UA					1500000
 #define DCP_CURRENT_UA					1500000
 #define CURRENT_MAX_UA					DCP_CURRENT_UA
+#define TYPEC_MEDIUM_CURRENT_UA				1500000
+#define TYPEC_HIGH_CURRENT_UA				3000000
 
 #define LIMIT_POLL_MS					30000
 
@@ -530,6 +539,23 @@ static int smb_set_current_limit(struct smb_chip *chip, unsigned int val)
 			    val_raw);
 }
 
+static unsigned int smb5_typec_current_ua(struct smb_chip *chip)
+{
+	unsigned int stat;
+
+	if (chip->gen != SMB5 ||
+	    regmap_read(chip->regmap, chip->base + SMB5_TYPEC_LEGACY_CABLE_STATUS_REG, &stat) ||
+	    (stat & SMB5_TYPEC_LEGACY_CABLE_BIT) ||
+	    regmap_read(chip->regmap, chip->base + SMB5_TYPEC_SNK_STATUS_REG, &stat))
+		return 0;
+
+	if (stat & SMB5_SNK_RP_3P0_BIT)
+		return TYPEC_HIGH_CURRENT_UA;
+	if (stat & SMB5_SNK_RP_1P5_BIT)
+		return TYPEC_MEDIUM_CURRENT_UA;
+	return 0;
+}
+
 static void smb_status_change_work(struct work_struct *work)
 {
 	unsigned int charger_type, current_ua;
@@ -578,6 +604,7 @@ static void smb_status_change_work(struct work_struct *work)
 		break;
 	}
 
+	current_ua = max(current_ua, smb5_typec_current_ua(chip));
 	smb_set_current_limit(chip, current_ua);
 	power_supply_changed(chip->chg_psy);
 }
