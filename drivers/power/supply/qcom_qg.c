@@ -13,6 +13,7 @@
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/regmap.h>
+#include <linux/unaligned.h>
 
 /* BATT offsets */
 #define QG_S2_NORMAL_AVG_V_DATA0_REG	0x80 /* 2-byte 0x80-0x81 */
@@ -109,6 +110,22 @@ static int qcom_qg_get_capacity(struct qcom_qg_chip *chip, int *val)
 	return 0;
 }
 
+static int qcom_qg_get_charge_full(struct qcom_qg_chip *chip, int *val)
+{
+	u8 raw[2];
+	int ret;
+
+	ret = nvmem_device_read(chip->sdam, QG_SDAM_LEARNED_CAPACITY_OFFSET, 2, raw);
+	if (ret < 0)
+		return ret;
+
+	*val = get_unaligned_le16(raw) * 1000;
+	if (!*val)
+		*val = chip->batt_info->charge_full_design_uah;
+
+	return *val > 0 ? 0 : -ENODATA;
+}
+
 static enum power_supply_property qcom_qg_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
@@ -121,6 +138,7 @@ static enum power_supply_property qcom_qg_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
 };
@@ -130,7 +148,7 @@ static int qcom_qg_get_property(struct power_supply *psy,
 				union power_supply_propval *val)
 {
 	struct qcom_qg_chip *chip = power_supply_get_drvdata(psy);
-	int ret;
+	int ret, full, capacity;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
@@ -179,11 +197,17 @@ static int qcom_qg_get_property(struct power_supply *psy,
 		val->intval = chip->batt_info->charge_full_design_uah;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		ret = nvmem_device_read(chip->sdam,
-				QG_SDAM_LEARNED_CAPACITY_OFFSET, 2, &val->intval);
-		if (ret < 0)
+		ret = qcom_qg_get_charge_full(chip, &val->intval);
+		if (ret)
 			return ret;
-		val->intval *= 1000; /* mAh to uAh */
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		ret = qcom_qg_get_charge_full(chip, &full);
+		if (!ret)
+			ret = qcom_qg_get_capacity(chip, &capacity);
+		if (ret)
+			return ret;
+		val->intval = div_s64((s64)full * capacity, 100);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		ret = qcom_qg_get_capacity(chip, &val->intval);
