@@ -77,6 +77,19 @@ enum smb_generation {
 #define SMB5_CHARGE_RCHG_SOC_THRESHOLD_CFG_REG		0x7D
 #define SMB5_CHARGE_RCHG_SOC_THRESHOLD_CFG_MASK		GENMASK(7, 0)
 
+#define JEITA_EN_CFG					0x90
+#define JEITA_EN_HOT_SL_FCV_BIT				BIT(3)
+#define JEITA_EN_COLD_SL_FCV_BIT			BIT(2)
+#define JEITA_EN_HOT_SL_CCC_BIT				BIT(1)
+#define JEITA_EN_COLD_SL_CCC_BIT			BIT(0)
+#define JEITA_FVCOMP_CFG_HOT				0x91
+#define JEITA_CCCOMP_CFG_HOT				0x92
+#define JEITA_CCCOMP_CFG_COLD				0x93
+#define JEITA_COMP_MASK					GENMASK(5, 0)
+#define JEITA_SOFT_THRESHOLD_HOT_MSB			0x94
+#define SMB5_JEITA_CC_COMP_STEP_UA			25000
+#define SMB5_JEITA_FV_COMP_STEP_UV			10000
+
 #define OTG_CFG						0x153
 #define OTG_EN_SRC_CFG_BIT				BIT(1)
 
@@ -1169,6 +1182,71 @@ static int smb_init_irq(struct smb_chip *chip, int *irq, const char *name,
 	return 0;
 }
 
+static int smb5_init_jeita(struct smb_chip *chip, unsigned int fcc_ua, u32 fv_uv)
+{
+	u32 thresholds[2], fcc[2], fv[2];
+	unsigned int cold_cc, hot_cc, hot_fv, en = 0;
+	u8 thr[4];
+	int rc;
+
+	if (!device_property_present(chip->dev, "qcom,jeita-soft-thresholds"))
+		return 0;
+
+	rc = device_property_read_u32_array(chip->dev, "qcom,jeita-soft-thresholds", thresholds, 2);
+	if (!rc)
+		rc = device_property_read_u32_array(chip->dev, "qcom,jeita-soft-fcc-microamp",
+						    fcc, 2);
+	if (!rc)
+		rc = device_property_read_u32_array(chip->dev, "qcom,jeita-soft-fv-microvolt",
+						    fv, 2);
+	if (rc)
+		return dev_err_probe(chip->dev, rc, "Couldn't read soft JEITA properties\n");
+
+	if (thresholds[0] > U16_MAX || thresholds[1] > U16_MAX ||
+	    fcc[0] > fcc_ua || fcc[1] > fcc_ua || fv[0] != fv_uv || fv[1] > fv_uv)
+		return dev_err_probe(chip->dev, -EINVAL, "Invalid soft JEITA properties\n");
+
+	cold_cc = DIV_ROUND_UP(fcc_ua - fcc[0], SMB5_JEITA_CC_COMP_STEP_UA);
+	hot_cc = DIV_ROUND_UP(fcc_ua - fcc[1], SMB5_JEITA_CC_COMP_STEP_UA);
+	hot_fv = DIV_ROUND_UP(fv_uv - fv[1], SMB5_JEITA_FV_COMP_STEP_UV);
+	if (cold_cc > JEITA_COMP_MASK || hot_cc > JEITA_COMP_MASK || hot_fv > JEITA_COMP_MASK)
+		return dev_err_probe(chip->dev, -EINVAL, "Soft JEITA compensation out of range\n");
+
+	thr[0] = thresholds[1] >> 8;
+	thr[1] = thresholds[1] & 0xff;
+	thr[2] = thresholds[0] >> 8;
+	thr[3] = thresholds[0] & 0xff;
+	rc = regmap_bulk_write(chip->regmap, chip->base + JEITA_SOFT_THRESHOLD_HOT_MSB,
+			       thr, ARRAY_SIZE(thr));
+	if (rc)
+		return dev_err_probe(chip->dev, rc, "Couldn't write soft JEITA thresholds\n");
+
+	rc = regmap_update_bits(chip->regmap, chip->base + JEITA_CCCOMP_CFG_COLD,
+				JEITA_COMP_MASK, cold_cc);
+	if (!rc)
+		rc = regmap_update_bits(chip->regmap, chip->base + JEITA_CCCOMP_CFG_HOT,
+					JEITA_COMP_MASK, hot_cc);
+	if (!rc)
+		rc = regmap_update_bits(chip->regmap, chip->base + JEITA_FVCOMP_CFG_HOT,
+					JEITA_COMP_MASK, hot_fv);
+	if (rc)
+		return dev_err_probe(chip->dev, rc, "Couldn't write soft JEITA compensation\n");
+
+	if (cold_cc)
+		en |= JEITA_EN_COLD_SL_CCC_BIT;
+	if (hot_cc)
+		en |= JEITA_EN_HOT_SL_CCC_BIT;
+	if (hot_fv)
+		en |= JEITA_EN_HOT_SL_FCV_BIT;
+	rc = regmap_update_bits(chip->regmap, chip->base + JEITA_EN_CFG,
+				JEITA_EN_HOT_SL_FCV_BIT | JEITA_EN_COLD_SL_FCV_BIT |
+				JEITA_EN_HOT_SL_CCC_BIT | JEITA_EN_COLD_SL_CCC_BIT, en);
+	if (rc)
+		return dev_err_probe(chip->dev, rc, "Couldn't enable soft JEITA\n");
+
+	return 0;
+}
+
 static int smb_probe(struct platform_device *pdev)
 {
 	struct power_supply_config supply_config = {};
@@ -1306,6 +1384,12 @@ static int smb_probe(struct platform_device *pdev)
 				FLOAT_VOLTAGE_SETTING_MASK, float_voltage_sel);
 	if (rc < 0)
 		return dev_err_probe(chip->dev, rc, "Couldn't set vbat max\n");
+
+	if (chip->gen == SMB5) {
+		rc = smb5_init_jeita(chip, fcc_ua, float_voltage_uv);
+		if (rc)
+			return rc;
+	}
 
 skip_float_voltage:
 	rc = smb_init_irq(chip, &irq, "bat-ov", smb_handle_batt_overvoltage);
