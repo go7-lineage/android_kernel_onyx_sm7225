@@ -720,6 +720,9 @@
 
 &pm7250b_charger {
 	monitored-battery = <&battery>;
+	qcom,jeita-soft-thresholds = <0x3f46 0x20b8>;
+	qcom,jeita-soft-fcc-microamp = <450000 1000000>;
+	qcom,jeita-soft-fv-microvolt = <4400000 4100000>;
 	status = "okay";
 };
 
