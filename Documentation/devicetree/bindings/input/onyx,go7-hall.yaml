@@ -10,7 +10,7 @@ maintainers:
   - ui-1 <134524800+ui-1@users.noreply.github.com>
 
 description:
-  Sensor for the folio cover. Closing the cover reports KEY_POWER, opening it reports KEY_WAKEUP.
+  Sensor for the folio cover. Closing the cover reports KEY_SLEEP, opening it reports KEY_WAKEUP.
 
 properties:
   compatible:

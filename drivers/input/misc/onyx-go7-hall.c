@@ -22,7 +22,7 @@ struct onyx_hall {
 	struct wakeup_source *ws;
 	int irq;
 	int state, last; /* 0 = closed, 1 = open */
-	bool alt_key, suspended;
+	bool alt_key;
 };
 
 static void hall_key(struct onyx_hall *h, unsigned int code)
@@ -50,9 +50,7 @@ static void hall_work(struct work_struct *work)
 		return;
 	h->last = h->state;
 	dev_dbg(h->dev, "cover %s\n", h->state ? "open" : "closed");
-	if (h->suspended && h->state == 0)
-		return;
-	hall_key(h, h->state ? KEY_WAKEUP : KEY_POWER);
+	hall_key(h, h->state ? KEY_WAKEUP : KEY_SLEEP);
 }
 
 static irqreturn_t hall_irq(int irq, void *data)
@@ -118,7 +116,7 @@ static int hall_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	h->input->name = "onyx-hall";
 	h->input->phys = "m1kbd/input2";
-	input_set_capability(h->input, EV_KEY, KEY_POWER);
+	input_set_capability(h->input, EV_KEY, KEY_SLEEP);
 	input_set_capability(h->input, EV_KEY, KEY_WAKEUP);
 	if (h->alt_key)
 		input_set_capability(h->input, EV_KEY, KEY_LEFTALT);
@@ -149,7 +147,6 @@ static int hall_suspend(struct device *dev)
 {
 	struct onyx_hall *h = dev_get_drvdata(dev);
 
-	h->suspended = true;
 	if (device_may_wakeup(dev))
 		enable_irq_wake(h->irq);
 	return 0;
@@ -161,7 +158,6 @@ static int hall_resume(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(h->irq);
-	h->suspended = false;
 	return 0;
 }
 

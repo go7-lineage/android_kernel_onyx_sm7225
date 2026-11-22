@@ -182,7 +182,7 @@ config INPUT_ONYX_GO7_HALL
 	tristate "Onyx Boox Go 7 cover sensor"
 	depends on OF && GPIOLIB
 	help
-	  Reports KEY_POWER when the folio cover closes and KEY_WAKEUP when it opens.
+	  Reports KEY_SLEEP when the folio cover closes and KEY_WAKEUP when it opens.
 
 config INPUT_PCSPKR
 	tristate "PC Speaker support"
