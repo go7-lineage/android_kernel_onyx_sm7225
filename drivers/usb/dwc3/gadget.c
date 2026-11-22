@@ -2770,6 +2770,7 @@ static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	usb_gadget_set_state(dwc->gadget, USB_STATE_NOTATTACHED);
+	pm_relax(&dwc->gadget->dev);
 
 	return ret;
 }
@@ -4125,6 +4126,7 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 	dwc->gadget->wakeup_armed = false;
 	dwc3_gadget_enable_linksts_evts(dwc, false);
 	usb_gadget_set_state(dwc->gadget, USB_STATE_NOTATTACHED);
+	pm_relax(&dwc->gadget->dev);
 
 	dwc3_ep0_reset_state(dwc);
 
@@ -4141,6 +4143,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	u32			reg;
 
 	dwc->suspended = false;
+	pm_stay_awake(&dwc->gadget->dev);
 
 	/*
 	 * Ideally, dwc3_reset_gadget() would trigger the function
@@ -4363,6 +4366,7 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, unsigned int evtinfo)
 {
 	dwc->suspended = false;
+	pm_stay_awake(&dwc->gadget->dev);
 
 	/*
 	 * TODO take core out of low power mode when that's
@@ -4504,6 +4508,7 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 
 	if (!dwc->suspended && next == DWC3_LINK_STATE_U3) {
 		dwc->suspended = true;
+		pm_relax(&dwc->gadget->dev);
 		dwc3_suspend_gadget(dwc);
 	}
 
@@ -4823,6 +4828,8 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 		dev_err(dwc->dev, "failed to add gadget\n");
 		goto err5;
 	}
+
+	device_init_wakeup(&dwc->gadget->dev, true);
 
 	if (DWC3_IP_IS(DWC32) && dwc->maximum_speed == USB_SPEED_SUPER_PLUS)
 		dwc3_gadget_set_ssp_rate(dwc->gadget, dwc->max_ssp_rate);
