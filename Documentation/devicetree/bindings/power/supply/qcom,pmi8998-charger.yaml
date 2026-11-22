@@ -42,6 +42,29 @@ properties:
 
   monitored-battery: true
 
+  qcom,jeita-soft-thresholds:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    description:
+      Battery thermistor readings, as codes of the charger's ADC, of the cool and the warm soft JEITA
+      threshold. Below the cool and above the warm threshold the charger applies the first and the second
+      value of qcom,jeita-soft-fcc-microamp and qcom,jeita-soft-fv-microvolt.
+    minItems: 2
+    maxItems: 2
+    items:
+      maximum: 0xffff
+
+  qcom,jeita-soft-fcc-microamp:
+    description: Fast charge current below the cool and above the warm threshold.
+    minItems: 2
+    maxItems: 2
+
+  qcom,jeita-soft-fv-microvolt:
+    description:
+      Float voltage below the cool and above the warm threshold. The first value must equal the float
+      voltage outside the soft zones.
+    minItems: 2
+    maxItems: 2
+
 required:
   - compatible
   - reg
@@ -50,6 +73,11 @@ required:
   - io-channels
   - io-channel-names
   - monitored-battery
+
+dependentRequired:
+  qcom,jeita-soft-thresholds: [ 'qcom,jeita-soft-fcc-microamp', 'qcom,jeita-soft-fv-microvolt' ]
+  qcom,jeita-soft-fcc-microamp: [ 'qcom,jeita-soft-thresholds' ]
+  qcom,jeita-soft-fv-microvolt: [ 'qcom,jeita-soft-thresholds' ]
 
 allOf:
   - $ref: power-supply.yaml#
@@ -80,5 +108,33 @@ examples:
                            "usbin_v";
 
         monitored-battery = <&battery>;
+      };
+    };
+  - |
+    #include <dt-bindings/interrupt-controller/irq.h>
+
+    pmic {
+      #address-cells = <1>;
+      #size-cells = <0>;
+
+      charger@1000 {
+        compatible = "qcom,pm7250b-charger";
+        reg = <0x1000>;
+
+        interrupts = <0x2 0x13 0x4 IRQ_TYPE_EDGE_BOTH>,
+                     <0x2 0x12 0x2 IRQ_TYPE_EDGE_BOTH>,
+                     <0x2 0x16 0x1 IRQ_TYPE_EDGE_RISING>,
+                     <0x2 0x13 0x7 IRQ_TYPE_EDGE_RISING>;
+        interrupt-names = "usb-plugin", "bat-ov", "wdog-bark", "usbin-icl-change";
+
+        io-channels = <&pm7250b_adc 7>,
+                      <&pm7250b_adc 8>;
+        io-channel-names = "usbin_i",
+                           "usbin_v";
+
+        monitored-battery = <&battery>;
+        qcom,jeita-soft-thresholds = <0x3f46 0x20b8>;
+        qcom,jeita-soft-fcc-microamp = <450000 1000000>;
+        qcom,jeita-soft-fv-microvolt = <4400000 4100000>;
       };
     };
