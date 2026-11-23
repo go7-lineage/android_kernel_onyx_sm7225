@@ -22,6 +22,10 @@ properties:
   reg:
     maxItems: 1
 
+  power-domains:
+    description: Power domain of the display controller that drives the link.
+    maxItems: 1
+
   reset-gpios: true
   port: true
 
