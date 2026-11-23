@@ -664,6 +664,7 @@
 		compatible = "onyx,go7-eink-dsi";
 		reg = <0>;
 		reset-gpios = <&tlmm 51 GPIO_ACTIVE_LOW>;
+		power-domains = <&dispcc MDSS_GDSC>;
 
 		pinctrl-0 = <&panel_reset_active>, <&mdp_vsync>;
 		pinctrl-1 = <&panel_reset_suspend>, <&mdp_vsync>;
