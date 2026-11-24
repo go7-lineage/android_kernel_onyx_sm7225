@@ -15,6 +15,8 @@
 #include <linux/regmap.h>
 #include <linux/unaligned.h>
 
+#include "adc-battery-helper.h"
+
 /* BATT offsets */
 #define QG_S2_NORMAL_AVG_V_DATA0_REG	0x80 /* 2-byte 0x80-0x81 */
 #define QG_S2_NORMAL_AVG_I_DATA0_REG	0x82 /* 2-byte 0x82-0x83 */
@@ -28,10 +30,12 @@
 #define QG_SDAM_LEARNED_CAPACITY_OFFSET	0x68 /* 2-byte 0x68-0x69 */
 
 struct qcom_qg_chip {
+	struct adc_battery_helper helper;
 	struct device *dev;
 	struct regmap *regmap;
 	unsigned int base;
 	unsigned int ibat_step_na;
+	bool use_helper;
 
 	struct iio_channel *batt_therm_chan;
 
@@ -82,6 +86,18 @@ static int qcom_qg_get_voltage(struct qcom_qg_chip *chip, u8 offset, int *val)
 	return 0;
 }
 
+static int qcom_qg_get_voltage_and_current_now(struct power_supply *psy, int *volt, int *curr)
+{
+	struct qcom_qg_chip *chip = power_supply_get_drvdata(psy);
+	int ret;
+
+	ret = qcom_qg_get_voltage(chip, QG_LAST_ADC_V_DATA0_REG, volt);
+	if (ret)
+		return ret;
+
+	return qcom_qg_get_current(chip, QG_LAST_ADC_I_DATA0_REG, curr);
+}
+
 /*
  * Yes, this function simply calculates the capacity based on
  * the current voltage. This will be rewritten in the future.
@@ -91,6 +107,16 @@ static int qcom_qg_get_capacity(struct qcom_qg_chip *chip, int *val)
 	int ret, voltage_now;
 	int voltage_min = chip->batt_info->voltage_min_design_uv;
 	int voltage_max = chip->batt_info->voltage_max_design_uv;
+
+	if (chip->use_helper) {
+		union power_supply_propval pval;
+
+		ret = adc_battery_helper_get_property(chip->batt_psy,
+						      POWER_SUPPLY_PROP_CAPACITY, &pval);
+		if (!ret)
+			*val = pval.intval;
+		return ret;
+	}
 
 	ret = qcom_qg_get_voltage(chip,
 				QG_S2_NORMAL_AVG_V_DATA0_REG, &voltage_now);
@@ -177,6 +203,8 @@ static int qcom_qg_get_property(struct power_supply *psy,
 			return ret;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
+		if (chip->use_helper)
+			return adc_battery_helper_get_property(psy, psp, val);
 		ret = nvmem_device_read(chip->sdam, QG_SDAM_OCV_OFFSET, 4, &val->intval);
 		if (ret < 0)
 			return ret;
@@ -228,12 +256,21 @@ static int qcom_qg_get_property(struct power_supply *psy,
 	return 0;
 }
 
+static void qcom_qg_external_power_changed(struct power_supply *psy)
+{
+	struct qcom_qg_chip *chip = power_supply_get_drvdata(psy);
+
+	if (chip->use_helper)
+		adc_battery_helper_external_power_changed(psy);
+}
+
 static struct power_supply_desc batt_psy_desc = {
 	.name = "qcom_qg",
 	.type = POWER_SUPPLY_TYPE_BATTERY,
 	.properties = qcom_qg_props,
 	.num_properties = ARRAY_SIZE(qcom_qg_props),
 	.get_property = qcom_qg_get_property,
+	.external_power_changed = qcom_qg_external_power_changed,
 };
 
 static int qcom_qg_probe(struct platform_device *pdev)
@@ -296,8 +333,31 @@ static int qcom_qg_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, chip);
 
+	ret = adc_battery_helper_init(&chip->helper, chip->batt_psy,
+				      qcom_qg_get_voltage_and_current_now, NULL);
+	if (ret)
+		dev_warn(chip->dev, "no OCV table, internal resistance or charge voltage, capacity from voltage only\n");
+	else
+		chip->use_helper = true;
+
 	return 0;
 }
+
+static int qcom_qg_suspend(struct device *dev)
+{
+	struct qcom_qg_chip *chip = dev_get_drvdata(dev);
+
+	return chip->use_helper ? adc_battery_helper_suspend(dev) : 0;
+}
+
+static int qcom_qg_resume(struct device *dev)
+{
+	struct qcom_qg_chip *chip = dev_get_drvdata(dev);
+
+	return chip->use_helper ? adc_battery_helper_resume(dev) : 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(qcom_qg_pm_ops, qcom_qg_suspend, qcom_qg_resume);
 
 static const struct of_device_id qcom_qg_of_match[] = {
 	{ .compatible = "qcom,pm6150-qg", },
@@ -309,6 +369,7 @@ static struct platform_driver qcom_qg_driver = {
 	.driver = {
 		.name = "qcom,qcom_qg",
 		.of_match_table = qcom_qg_of_match,
+		.pm = pm_sleep_ptr(&qcom_qg_pm_ops),
 	},
 	.probe = qcom_qg_probe,
 };
