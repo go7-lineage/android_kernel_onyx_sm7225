@@ -1249,7 +1249,12 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 		if (!wait_for_completion_timeout(&ctx->work, 10 * HZ))
 			err = -ETIMEDOUT;
 	} else {
-		err = wait_for_completion_interruptible(&ctx->work);
+		/*
+		 * Freezable, so suspend doesn't interrupt the invoke: a restarted
+		 * invoke is sent to the DSP again, which crashes it. Drop once this
+		 * lands: https://lore.kernel.org/r/20261117-interrupted-invoke-v4-v4-0-2320a8a7eda2@oss.qualcomm.com
+		 */
+		err = wait_for_completion_state(&ctx->work, TASK_INTERRUPTIBLE | TASK_FREEZABLE);
 	}
 
 	if (err)
