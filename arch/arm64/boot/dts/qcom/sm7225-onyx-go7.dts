@@ -604,6 +604,8 @@
 		#sound-dai-cells = <0>;
 		awinic,audio-channel = <0>;
 		sound-name-prefix = "Speaker";
+		vcc-supply = <&vreg_l5a>;
+		vdd-supply = <&vreg_vsys>;
 	};
 
 	led-controller@38 {
