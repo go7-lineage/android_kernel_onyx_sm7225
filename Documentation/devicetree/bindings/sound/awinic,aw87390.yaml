@@ -36,6 +36,12 @@ properties:
     minimum: 0
     maximum: 7
 
+  vdd-supply:
+    description: Power supply of the amplifier (VDD).
+
+  vcc-supply:
+    description: 1.8 V supply of the I2C interface.
+
 required:
   - compatible
   - reg
