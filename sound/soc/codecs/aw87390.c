@@ -7,9 +7,11 @@
 // Author: Weidong Wang <wangweidong.a@awinic.com>
 //
 
+#include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/firmware.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <sound/soc.h>
 #include "aw87390.h"
 #include "aw88395/aw88395_data_type.h"
@@ -403,6 +405,43 @@ static int aw87390_init(struct aw87390 **aw87390, struct i2c_client *i2c, struct
 	return 0;
 }
 
+static const char * const aw87390_supply_names[AW87390_NUM_SUPPLIES] = {
+	"vdd",
+	"vcc",
+};
+
+static void aw87390_disable_supplies(void *data)
+{
+	struct aw87390 *aw87390 = data;
+
+	if (!aw87390->supplies_off)
+		regulator_bulk_disable(AW87390_NUM_SUPPLIES, aw87390->supplies);
+}
+
+static int aw87390_enable_supplies(struct device *dev, struct aw87390 *aw87390)
+{
+	int ret, i;
+
+	for (i = 0; i < AW87390_NUM_SUPPLIES; i++)
+		aw87390->supplies[i].supply = aw87390_supply_names[i];
+
+	ret = devm_regulator_bulk_get(dev, AW87390_NUM_SUPPLIES, aw87390->supplies);
+	if (ret)
+		return dev_err_probe(dev, ret, "failed to get supplies\n");
+
+	ret = regulator_bulk_enable(AW87390_NUM_SUPPLIES, aw87390->supplies);
+	if (ret)
+		return dev_err_probe(dev, ret, "failed to enable supplies\n");
+
+	ret = devm_add_action_or_reset(dev, aw87390_disable_supplies, aw87390);
+	if (ret)
+		return ret;
+
+	usleep_range(2000, 2500);
+
+	return 0;
+}
+
 static int aw87390_i2c_probe(struct i2c_client *i2c)
 {
 	struct aw87390 *aw87390;
@@ -424,6 +463,10 @@ static int aw87390_i2c_probe(struct i2c_client *i2c)
 	if (IS_ERR(aw87390->regmap))
 		return dev_err_probe(&i2c->dev, PTR_ERR(aw87390->regmap),
 					"failed to init regmap\n");
+
+	ret = aw87390_enable_supplies(&i2c->dev, aw87390);
+	if (ret)
+		return ret;
 
 	/* aw pa init */
 	ret = aw87390_init(&aw87390, i2c, aw87390->regmap);
@@ -448,9 +491,50 @@ static const struct i2c_device_id aw87390_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, aw87390_i2c_id);
 
+static int aw87390_suspend(struct device *dev)
+{
+	struct aw87390 *aw87390 = dev_get_drvdata(dev);
+	int ret;
+
+	mutex_lock(&aw87390->lock);
+	if (aw87390->aw_pa->status == AW87390_DEV_PW_OFF && !aw87390->supplies_off) {
+		ret = regulator_bulk_disable(AW87390_NUM_SUPPLIES, aw87390->supplies);
+		if (ret)
+			dev_warn(dev, "failed to disable supplies: %d\n", ret);
+		else
+			aw87390->supplies_off = true;
+	}
+	mutex_unlock(&aw87390->lock);
+
+	return 0;
+}
+
+static int aw87390_resume(struct device *dev)
+{
+	struct aw87390 *aw87390 = dev_get_drvdata(dev);
+	int ret = 0;
+
+	mutex_lock(&aw87390->lock);
+	if (aw87390->supplies_off) {
+		ret = regulator_bulk_enable(AW87390_NUM_SUPPLIES, aw87390->supplies);
+		if (ret) {
+			dev_err(dev, "failed to enable supplies: %d\n", ret);
+		} else {
+			aw87390->supplies_off = false;
+			usleep_range(2000, 2500);
+		}
+	}
+	mutex_unlock(&aw87390->lock);
+
+	return ret;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(aw87390_pm_ops, aw87390_suspend, aw87390_resume);
+
 static struct i2c_driver aw87390_i2c_driver = {
 	.driver = {
 		.name = AW87390_I2C_NAME,
+		.pm = pm_sleep_ptr(&aw87390_pm_ops),
 	},
 	.probe = aw87390_i2c_probe,
 	.id_table = aw87390_i2c_id,

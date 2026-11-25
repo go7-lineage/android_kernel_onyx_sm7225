@@ -75,11 +75,15 @@ enum {
 	AW87390_DEV_PW_ON,
 };
 
+#define AW87390_NUM_SUPPLIES		2
+
 struct aw87390 {
 	struct aw_device *aw_pa;
 	struct mutex lock;
 	struct regmap *regmap;
 	struct aw_container *aw_cfg;
+	struct regulator_bulk_data supplies[AW87390_NUM_SUPPLIES];
+	bool supplies_off;
 };
 
 #endif
