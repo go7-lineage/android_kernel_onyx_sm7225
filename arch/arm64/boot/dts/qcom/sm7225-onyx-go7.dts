@@ -776,6 +776,12 @@
 	};
 };
 
+&pm7250b_vbus {
+	regulator-min-microamp = <500000>;
+	regulator-max-microamp = <3000000>;
+	status = "okay";
+};
+
 &pmk8350_rtc {
 	status = "okay";
 };
