@@ -151,6 +151,7 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
 			link->codecs	 = &snd_soc_dummy_dlc;
 			link->num_codecs = 1;
 			link->dynamic = 1;
+			link->ignore_pmdown_time = 1;
 		}
 
 		if (platform || !codec) {
