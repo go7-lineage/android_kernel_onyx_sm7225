@@ -1909,6 +1909,9 @@ static int rx_macro_digital_mute(struct snd_soc_dai *dai, int mute, int stream)
 	u16 int_mux_cfg0, int_mux_cfg1;
 	u8 int_mux_cfg0_val, int_mux_cfg1_val;
 
+	if (mute)
+		return 0;
+
 	switch (dai->id) {
 	case RX_MACRO_AIF1_PB:
 	case RX_MACRO_AIF2_PB:
@@ -1919,19 +1922,10 @@ static int rx_macro_digital_mute(struct snd_soc_dai *dai, int mute, int stream)
 			mix_reg = CDC_RX_RXn_RX_PATH_MIX_CTL(rx, j);
 			dsm_reg = CDC_RX_RXn_RX_PATH_DSM_CTL(rx, j);
 
-			if (mute) {
-				snd_soc_component_update_bits(component, reg,
-							      CDC_RX_PATH_PGA_MUTE_MASK,
-							      CDC_RX_PATH_PGA_MUTE_ENABLE);
-				snd_soc_component_update_bits(component, mix_reg,
-							      CDC_RX_PATH_PGA_MUTE_MASK,
-							      CDC_RX_PATH_PGA_MUTE_ENABLE);
-			} else {
-				snd_soc_component_update_bits(component, reg,
-							      CDC_RX_PATH_PGA_MUTE_MASK, 0x0);
-				snd_soc_component_update_bits(component, mix_reg,
-							      CDC_RX_PATH_PGA_MUTE_MASK, 0x0);
-			}
+			snd_soc_component_update_bits(component, reg,
+						      CDC_RX_PATH_PGA_MUTE_MASK, 0x0);
+			snd_soc_component_update_bits(component, mix_reg,
+						      CDC_RX_PATH_PGA_MUTE_MASK, 0x0);
 
 			int_mux_cfg0 = CDC_RX_INP_MUX_RX_INT0_CFG0 + j * 8;
 			int_mux_cfg1 = int_mux_cfg0 + 4;
