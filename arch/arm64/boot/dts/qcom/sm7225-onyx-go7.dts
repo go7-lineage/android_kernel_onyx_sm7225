@@ -23,6 +23,7 @@
 #include "pm6350.dtsi"
 #include "pm7250b.dtsi"
 #include "pmk8350.dtsi"
+#include "sm7225-onyx-go7-battery.dtsi"
 
 /delete-node/ &ramoops;
 
