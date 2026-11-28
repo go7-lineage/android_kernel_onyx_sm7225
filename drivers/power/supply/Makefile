@@ -39,7 +39,9 @@ obj-$(CONFIG_BATTERY_LENOVO_YOGA_C630) += lenovo_yoga_c630_battery.o
 obj-$(CONFIG_BATTERY_PMU)	+= pmu_battery.o
 obj-$(CONFIG_BATTERY_QCOM_BATTMGR)	+= qcom_battmgr.o
 obj-$(CONFIG_BATTERY_QCOM_QG)	+= qcom-qg.o
-qcom-qg-y			:= qcom_qg.o qcom_qg_profile.o
+qcom-qg-y			:= qcom_qg.o qcom_qg_profile.o qcom_qg_soc.o
+CFLAGS_qcom_qg_soc.o		+= $(CC_FLAGS_FPU) -ffp-contract=off
+CFLAGS_REMOVE_qcom_qg_soc.o	+= $(CC_FLAGS_NO_FPU)
 obj-$(CONFIG_BATTERY_OLPC)	+= olpc_battery.o
 obj-$(CONFIG_BATTERY_SAMSUNG_SDI)	+= samsung-sdi-battery.o
 obj-$(CONFIG_BATTERY_COLLIE)	+= collie_battery.o
