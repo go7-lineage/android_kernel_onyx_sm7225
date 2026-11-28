@@ -607,6 +607,35 @@ static int va_macro_tx_mixer_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static unsigned int test_dmic_hz;
+module_param(test_dmic_hz, uint, 0644);
+MODULE_PARM_DESC(test_dmic_hz, "Test only: DMIC clock in Hz from the next capture start (0: devicetree)");
+
+static u16 va_macro_dmic_clk_div(struct va_macro *va)
+{
+	unsigned int hz = READ_ONCE(test_dmic_hz);
+
+	if (!hz || VA_MACRO_MCLK_FREQ % hz)
+		return va->dmic_clk_div;
+
+	switch (VA_MACRO_MCLK_FREQ / hz) {
+	case 2:
+		return VA_MACRO_CLK_DIV_2;
+	case 3:
+		return VA_MACRO_CLK_DIV_3;
+	case 4:
+		return VA_MACRO_CLK_DIV_4;
+	case 6:
+		return VA_MACRO_CLK_DIV_6;
+	case 8:
+		return VA_MACRO_CLK_DIV_8;
+	case 16:
+		return VA_MACRO_CLK_DIV_16;
+	default:
+		return va->dmic_clk_div;
+	}
+}
+
 static int va_dmic_clk_enable(struct snd_soc_component *component,
 			      u32 dmic, bool enable)
 {
@@ -653,9 +682,12 @@ static int va_dmic_clk_enable(struct snd_soc_component *component,
 	}
 
 	if (enable) {
-		clk_div = va->dmic_clk_div;
+		clk_div = va_macro_dmic_clk_div(va);
 		(*dmic_clk_cnt)++;
 		if (*dmic_clk_cnt == 1) {
+			if (READ_ONCE(test_dmic_hz))
+				dev_info(component->dev, "test: DMIC%u clock select %u (test_dmic_hz %u)\n",
+					 dmic, clk_div, READ_ONCE(test_dmic_hz));
 			snd_soc_component_update_bits(component,
 					      CDC_VA_TOP_CSR_DMIC_CFG,
 					      CDC_VA_RESET_ALL_DMICS_MASK,
@@ -694,9 +726,9 @@ static int va_dmic_clk_enable(struct snd_soc_component *component,
 						CDC_VA_DMIC_CLK_SEL_MASK,
 						clk_div << CDC_VA_DMIC_CLK_SEL_SHFT);
 		} else {
-			clk_div = va->dmic_clk_div;
+			clk_div = va_macro_dmic_clk_div(va);
 			if (*dmic_clk_div > clk_div) {
-				clk_div = va->dmic_clk_div;
+				clk_div = va_macro_dmic_clk_div(va);
 				snd_soc_component_update_bits(component,
 							CDC_VA_TOP_CSR_DMIC_CFG,
 							freq_change_mask,
