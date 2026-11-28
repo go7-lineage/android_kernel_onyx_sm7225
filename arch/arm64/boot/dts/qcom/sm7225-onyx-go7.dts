@@ -509,6 +509,10 @@
 	status = "okay";
 };
 
+&crypto {
+	status = "disabled";
+};
+
 &gpi_dma0 {
 	status = "okay";
 };
