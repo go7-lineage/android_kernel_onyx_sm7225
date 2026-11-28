@@ -176,6 +176,104 @@ static int rpmh_regulator_send_request(struct rpmh_vreg *vreg,
 	return ret;
 }
 
+static struct rpmh_vreg *test_bob;
+
+static int test_bob_send(u32 reg, u32 data)
+{
+	struct rpmh_vreg *vreg = READ_ONCE(test_bob);
+	struct tcs_cmd cmd = {};
+
+	if (!vreg)
+		return -ENODEV;
+
+	cmd.addr = vreg->addr + reg;
+	cmd.data = data;
+
+	return rpmh_regulator_send_request(vreg, &cmd, true);
+}
+
+static const char * const test_bob_mode_names[] = { "pass", "pfm", "auto", "pwm" };
+static const unsigned int test_bob_modes[] = {
+	REGULATOR_MODE_INVALID, REGULATOR_MODE_IDLE, REGULATOR_MODE_NORMAL, REGULATOR_MODE_FAST,
+};
+static int test_bob_mode_index = -1;
+
+static int test_bob_mode_set(const char *val, const struct kernel_param *kp)
+{
+	struct rpmh_vreg *vreg = READ_ONCE(test_bob);
+	int i, mode, ret;
+
+	if (!vreg)
+		return -ENODEV;
+
+	i = sysfs_match_string(test_bob_mode_names, val);
+	if (i < 0)
+		return i;
+
+	if (test_bob_modes[i] == REGULATOR_MODE_INVALID)
+		mode = vreg->hw_data->pmic_bypass_mode;
+	else
+		mode = vreg->hw_data->pmic_mode_map[test_bob_modes[i]];
+	if (mode < 0)
+		return mode;
+
+	ret = test_bob_send(RPMH_REGULATOR_REG_VRM_MODE, mode);
+	if (ret)
+		return ret;
+
+	test_bob_mode_index = i;
+	dev_info(vreg->dev, "test: bob mode %s (%d)\n", test_bob_mode_names[i], mode);
+
+	return 0;
+}
+
+static int test_bob_mode_get(char *buf, const struct kernel_param *kp)
+{
+	return scnprintf(buf, PAGE_SIZE, "%s\n", test_bob_mode_index < 0 ? "unset" :
+			 test_bob_mode_names[test_bob_mode_index]);
+}
+
+static const struct kernel_param_ops test_bob_mode_ops = {
+	.set = test_bob_mode_set,
+	.get = test_bob_mode_get,
+};
+module_param_cb(test_bob_mode, &test_bob_mode_ops, NULL, 0644);
+MODULE_PARM_DESC(test_bob_mode, "Test only: send this mode for bob (pass, pfm, auto, pwm), bypassing the regulator core");
+
+static unsigned int test_bob_uv;
+
+static int test_bob_uv_set(const char *val, const struct kernel_param *kp)
+{
+	struct rpmh_vreg *vreg = READ_ONCE(test_bob);
+	unsigned int uv;
+	int ret;
+
+	if (!vreg)
+		return -ENODEV;
+
+	ret = kstrtouint(val, 0, &uv);
+	if (ret)
+		return ret;
+	if (uv < 3000000 || uv > 3960000)
+		return -ERANGE;
+
+	ret = test_bob_send(RPMH_REGULATOR_REG_VRM_VOLTAGE, DIV_ROUND_UP(uv, 1000));
+	if (ret)
+		return ret;
+
+	test_bob_uv = uv;
+	dev_info(vreg->dev, "test: bob %u uV\n", uv);
+
+	return 0;
+}
+
+static const struct kernel_param_ops test_bob_uv_ops = {
+	.set = test_bob_uv_set,
+	.get = param_get_uint,
+};
+module_param_cb(test_bob_uv, &test_bob_uv_ops, &test_bob_uv, 0644);
+MODULE_PARM_DESC(test_bob_uv, "Test only: send this voltage for bob (3000000-3960000), bypassing the regulator core");
+
 static int _rpmh_regulator_vrm_set_voltage_sel(struct regulator_dev *rdev,
 				unsigned int selector, bool wait_for_ack)
 {
@@ -493,6 +591,9 @@ static int rpmh_regulator_init_vreg(struct rpmh_vreg *vreg, struct device *dev,
 
 	dev_dbg(dev, "%pOFn regulator registered for RPMh resource %s @ 0x%05X\n",
 		node, rpmh_resource_name, vreg->addr);
+
+	if (!strcmp(rpmh_data->name, "bob"))
+		WRITE_ONCE(test_bob, vreg);
 
 	return 0;
 }
