@@ -37,6 +37,8 @@
 		.mux_bit = 2,			\
 		.pull_bit = 0,			\
 		.drv_bit = 6,			\
+		.egpio_enable = 12,		\
+		.egpio_present = 11,		\
 		.oe_bit = 9,			\
 		.in_bit = 0,			\
 		.out_bit = 1,			\
@@ -468,6 +470,7 @@ enum sm6350_functions {
 	msm_mux_ddr_pxi3,
 	msm_mux_dp_hot,
 	msm_mux_edp_lcd,
+	msm_mux_egpio,
 	msm_mux_gcc_gp1,
 	msm_mux_gcc_gp2,
 	msm_mux_gcc_gp3,
@@ -677,6 +680,14 @@ static const char * const gcc_gp3_groups[] = {
 };
 static const char * const edp_lcd_groups[] = {
 	"gpio23",
+};
+static const char * const egpio_groups[] = {
+	"gpio125", "gpio126", "gpio127", "gpio128", "gpio129", "gpio130",
+	"gpio131", "gpio132", "gpio133", "gpio134", "gpio135", "gpio136",
+	"gpio137", "gpio138", "gpio139", "gpio140", "gpio141", "gpio142",
+	"gpio143", "gpio144", "gpio145", "gpio146", "gpio147", "gpio148",
+	"gpio149", "gpio150", "gpio151", "gpio152", "gpio153", "gpio154",
+	"gpio155",
 };
 static const char * const qup13_f1_groups[] = {
 	"gpio25", "gpio26",
@@ -1042,6 +1053,7 @@ static const struct pinfunction sm6350_functions[] = {
 	MSM_PIN_FUNCTION(ddr_pxi3),
 	MSM_PIN_FUNCTION(dp_hot),
 	MSM_PIN_FUNCTION(edp_lcd),
+	MSM_GPIO_PIN_FUNCTION(egpio),
 	MSM_PIN_FUNCTION(gcc_gp1),
 	MSM_PIN_FUNCTION(gcc_gp2),
 	MSM_PIN_FUNCTION(gcc_gp3),
@@ -1283,37 +1295,37 @@ static const struct msm_pingroup sm6350_groups[] = {
 	[122] = PINGROUP(122, pcie0_clk, _, _, _, _, _, _, _, _),
 	[123] = PINGROUP(123, _, _, _, _, _, _, _, _, _),
 	[124] = PINGROUP(124, usb_phy, _, _, _, _, _, _, _, _),
-	[125] = PINGROUP(125, _, _, _, _, _, _, _, _, _),
-	[126] = PINGROUP(126, _, _, _, _, _, _, _, _, _),
-	[127] = PINGROUP(127, _, _, _, _, _, _, _, _, _),
-	[128] = PINGROUP(128, _, _, _, _, _, _, _, _, _),
-	[129] = PINGROUP(129, _, _, _, _, _, _, _, _, _),
-	[130] = PINGROUP(130, _, _, _, _, _, _, _, _, _),
-	[131] = PINGROUP(131, _, _, _, _, _, _, _, _, _),
-	[132] = PINGROUP(132, _, _, _, _, _, _, _, _, _),
-	[133] = PINGROUP(133, _, _, _, _, _, _, _, _, _),
-	[134] = PINGROUP(134, _, _, _, _, _, _, _, _, _),
-	[135] = PINGROUP(135, _, _, _, _, _, _, _, _, _),
-	[136] = PINGROUP(136, _, _, _, _, _, _, _, _, _),
-	[137] = PINGROUP(137, _, _, _, _, _, _, _, _, _),
-	[138] = PINGROUP(138, _, _, _, _, _, _, _, _, _),
-	[139] = PINGROUP(139, _, _, _, _, _, _, _, _, _),
-	[140] = PINGROUP(140, _, _, _, _, _, _, _, _, _),
-	[141] = PINGROUP(141, _, _, _, _, _, _, _, _, _),
-	[142] = PINGROUP(142, _, _, _, _, _, _, _, _, _),
-	[143] = PINGROUP(143, _, _, _, _, _, _, _, _, _),
-	[144] = PINGROUP(144, _, _, _, _, _, _, _, _, _),
-	[145] = PINGROUP(145, _, _, _, _, _, _, _, _, _),
-	[146] = PINGROUP(146, _, _, _, _, _, _, _, _, _),
-	[147] = PINGROUP(147, _, _, _, _, _, _, _, _, _),
-	[148] = PINGROUP(148, _, _, _, _, _, _, _, _, _),
-	[149] = PINGROUP(149, _, _, _, _, _, _, _, _, _),
-	[150] = PINGROUP(150, _, _, _, _, _, _, _, _, _),
-	[151] = PINGROUP(151, _, _, _, _, _, _, _, _, _),
-	[152] = PINGROUP(152, _, _, _, _, _, _, _, _, _),
-	[153] = PINGROUP(153, _, _, _, _, _, _, _, _, _),
-	[154] = PINGROUP(154, _, _, _, _, _, _, _, _, _),
-	[155] = PINGROUP(155, _, _, _, _, _, _, _, _, _),
+	[125] = PINGROUP(125, _, _, _, _, _, _, _, _, egpio),
+	[126] = PINGROUP(126, _, _, _, _, _, _, _, _, egpio),
+	[127] = PINGROUP(127, _, _, _, _, _, _, _, _, egpio),
+	[128] = PINGROUP(128, _, _, _, _, _, _, _, _, egpio),
+	[129] = PINGROUP(129, _, _, _, _, _, _, _, _, egpio),
+	[130] = PINGROUP(130, _, _, _, _, _, _, _, _, egpio),
+	[131] = PINGROUP(131, _, _, _, _, _, _, _, _, egpio),
+	[132] = PINGROUP(132, _, _, _, _, _, _, _, _, egpio),
+	[133] = PINGROUP(133, _, _, _, _, _, _, _, _, egpio),
+	[134] = PINGROUP(134, _, _, _, _, _, _, _, _, egpio),
+	[135] = PINGROUP(135, _, _, _, _, _, _, _, _, egpio),
+	[136] = PINGROUP(136, _, _, _, _, _, _, _, _, egpio),
+	[137] = PINGROUP(137, _, _, _, _, _, _, _, _, egpio),
+	[138] = PINGROUP(138, _, _, _, _, _, _, _, _, egpio),
+	[139] = PINGROUP(139, _, _, _, _, _, _, _, _, egpio),
+	[140] = PINGROUP(140, _, _, _, _, _, _, _, _, egpio),
+	[141] = PINGROUP(141, _, _, _, _, _, _, _, _, egpio),
+	[142] = PINGROUP(142, _, _, _, _, _, _, _, _, egpio),
+	[143] = PINGROUP(143, _, _, _, _, _, _, _, _, egpio),
+	[144] = PINGROUP(144, _, _, _, _, _, _, _, _, egpio),
+	[145] = PINGROUP(145, _, _, _, _, _, _, _, _, egpio),
+	[146] = PINGROUP(146, _, _, _, _, _, _, _, _, egpio),
+	[147] = PINGROUP(147, _, _, _, _, _, _, _, _, egpio),
+	[148] = PINGROUP(148, _, _, _, _, _, _, _, _, egpio),
+	[149] = PINGROUP(149, _, _, _, _, _, _, _, _, egpio),
+	[150] = PINGROUP(150, _, _, _, _, _, _, _, _, egpio),
+	[151] = PINGROUP(151, _, _, _, _, _, _, _, _, egpio),
+	[152] = PINGROUP(152, _, _, _, _, _, _, _, _, egpio),
+	[153] = PINGROUP(153, _, _, _, _, _, _, _, _, egpio),
+	[154] = PINGROUP(154, _, _, _, _, _, _, _, _, egpio),
+	[155] = PINGROUP(155, _, _, _, _, _, _, _, _, egpio),
 	[156] = UFS_RESET(ufs_reset, 0xae000),
 	[157] = SDC_PINGROUP(sdc1_rclk, 0xa1000, 15, 0),
 	[158] = SDC_PINGROUP(sdc1_clk, 0xa0000, 13, 6),
@@ -1355,6 +1367,7 @@ static const struct msm_pinctrl_soc_data sm6350_tlmm = {
 	.wakeirq_map = sm6350_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(sm6350_pdc_map),
 	.wakeirq_dual_edge_errata = true,
+	.egpio_func = 9,
 };
 
 static int sm6350_tlmm_probe(struct platform_device *pdev)
