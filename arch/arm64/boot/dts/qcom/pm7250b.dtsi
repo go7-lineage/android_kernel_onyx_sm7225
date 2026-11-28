@@ -239,6 +239,13 @@
 			compatible = "qcom,pm7250b-qg", "qcom,pm6150-qg";
 			reg = <0x4800>;
 
+			interrupts = <PM7250B_SID 0x48 0x2 IRQ_TYPE_EDGE_RISING>,
+				     <PM7250B_SID 0x48 0x3 IRQ_TYPE_EDGE_RISING>,
+				     <PM7250B_SID 0x48 0x4 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "vbat-empty",
+					  "fifo-done",
+					  "good-ocv";
+
 			io-channels = <0>, /* to be provided by board */
 				      <&pm7250b_adc ADC5_BAT_ID_100K_PU>;
 			io-channel-names = "batt-therm",
