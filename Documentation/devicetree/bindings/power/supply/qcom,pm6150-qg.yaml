@@ -12,7 +12,8 @@ maintainers:
 description:
   The QGauge block of the PM6150 and PM7250B PMICs measures battery voltage and current.
   Driver reports them with battery temperature from a thermistor ADC channel and the battery
-  data from monitored-battery. Some of its state lives in SDAM region
+  data from monitored-battery. Some of its state lives in SDAM region. With the interrupts and
+  the battery profile the driver estimates the state of charge from the gauge's samples
 
 allOf:
   - $ref: power-supply.yaml#
@@ -27,6 +28,18 @@ properties:
 
   reg:
     maxItems: 1
+
+  interrupts:
+    items:
+      - description: battery voltage below the empty threshold
+      - description: sample FIFO filled
+      - description: open-circuit voltage measured in the low-current sleep state
+
+  interrupt-names:
+    items:
+      - const: vbat-empty
+      - const: fifo-done
+      - const: good-ocv
 
   io-channels:
     items:
@@ -43,6 +56,72 @@ properties:
     description: SDAM region holding QGauge state
 
   monitored-battery: true
+
+  battery-profile:
+    type: object
+    additionalProperties: false
+    description:
+      Characterisation of the battery by the PMIC vendor. Tables over temperature, and over
+      state of charge and temperature, with the values in the vendor's encoding.
+
+    patternProperties:
+      "^qcom,fcc[12]-temp-lut$":
+        type: object
+        additionalProperties: false
+        description: Full charge capacity in mAh while charging (1) and discharging (2).
+
+        properties:
+          qcom,lut-col-legend:
+            $ref: /schemas/types.yaml#/definitions/int32-array
+            description: Temperatures in degrees Celsius, ascending.
+            minItems: 1
+            maxItems: 16
+
+          qcom,lut-data:
+            $ref: /schemas/types.yaml#/definitions/uint32-matrix
+            description: One value per temperature.
+            maxItems: 1
+            items:
+              minItems: 1
+              maxItems: 16
+
+        required:
+          - qcom,lut-col-legend
+          - qcom,lut-data
+
+      "^qcom,pc-temp-(v[12]|[yz][1-6])-lut$":
+        type: object
+        additionalProperties: false
+        description:
+          Open-circuit voltage in units of 100 uV while charging (v1) and discharging (v2),
+          and encoded impedance parameters while charging (z1 to z6) and discharging (y1 to y6).
+
+        properties:
+          qcom,lut-col-legend:
+            $ref: /schemas/types.yaml#/definitions/int32-array
+            description: Temperatures in degrees Celsius, ascending.
+            minItems: 1
+            maxItems: 16
+
+          qcom,lut-row-legend:
+            $ref: /schemas/types.yaml#/definitions/uint32-array
+            description: States of charge in units of 0.01 percent, descending.
+            minItems: 2
+            maxItems: 128
+
+          qcom,lut-data:
+            $ref: /schemas/types.yaml#/definitions/uint32-matrix
+            description: One row per state of charge, one value per temperature.
+            minItems: 2
+            maxItems: 128
+            items:
+              minItems: 1
+              maxItems: 16
+
+        required:
+          - qcom,lut-col-legend
+          - qcom,lut-row-legend
+          - qcom,lut-data
 
 required:
   - compatible
