@@ -125,11 +125,6 @@ static int aw87390_power_off(struct aw_device *aw_dev)
 		return 0;
 	}
 
-	ret = regmap_update_bits(aw_dev->regmap, AW87390_SYSCTRL_REG, AW87390_SYSCTRL_EN_PA, 0);
-	if (ret)
-		return ret;
-	usleep_range(AW87390_PA_OFF_DELAY_US, AW87390_PA_OFF_DELAY_US + 1000);
-
 	ret = regmap_write(aw_dev->regmap, AW87390_SYSCTRL_REG, AW87390_POWER_DOWN_VALUE);
 	if (ret)
 		return ret;
