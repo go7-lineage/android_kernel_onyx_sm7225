@@ -221,8 +221,8 @@ config BATTERY_QCOM_QG
 	tristate "Qualcomm PMIC QGauge driver"
 	depends on MFD_SPMI_PMIC
 	depends on IIO
+	depends on RTC_CLASS
 	depends on ARCH_HAS_KERNEL_FPU_SUPPORT
-	select ADC_BATTERY_HELPER
 	help
 	  Say Y here to enable the Qualcomm Technologies, Inc. QGauge driver
 	  which uses the periodic sampling of the battery voltage and current
